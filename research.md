@@ -1,0 +1,370 @@
+# Research: PriceMatrix
+
+Исследование по 6 направлениям. Результаты собраны из параллельных агентов.
+
+---
+
+## 1. Конкуренты и аналоги
+
+### Главный вывод
+Ниша **загрузка Excel-прайса поставщика → наценка → выгрузка в InSales** на российском рынке фактически свободна. Ближайший аналог — ПрайсМатрикс (4 900 руб/мес), остальные либо мониторят конкурентов, либо заточены под маркетплейсы.
+
+### Обзор продуктов
+
+| Продукт | Фокус | Цена/мес | InSales | Что цепляет |
+|---|---|---|---|---|
+| **Syncee** | Дропшиппинг + синхронизация | $29–129 | Нет | Маркетплейс поставщиков внутри |
+| **Prisync** | Мониторинг цен конкурентов | $59–229 | Нет | Онбординг за 5 минут |
+| **DataFeedWatch** | Управление товарными фидами | $64+ | Нет | 2000+ каналов интеграций |
+| **Competera** | AI-ценообразование | Enterprise | Нет | ROI-калькулятор, ML-оптимизация |
+| **Pricematik** | Переценивание (РФ) | 990 руб+ | Да | Низкий порог входа |
+| **МойСклад** | Торговля + склад (РФ) | Free/450 руб+ | Да | Бесплатный тариф |
+| **SKULabs** | Склад + EDI | $299+ | Нет | Глубокая интеграция с поставщиками |
+| **SellerBoard** | Маркетплейс-аналитика | $15+ | Нет | P&L с учётом всех комиссий |
+| **ПрайсМатрикс** | Управление прайсами (РФ) | 4 900 руб | **Да** | Прямая интеграция с InSales |
+
+### Что цепляет у лучших
+- **Prisync:** "Настройка за 5 минут без IT-специалиста" — простой онбординг как УТП
+- **Syncee:** 3 шага на главной: найди → импортируй → продавай
+- **DataFeedWatch:** схема потока данных прямо на лендинге
+- **МойСклад:** бесплатный тариф снимает барьер входа
+- **Competera:** ROI-калькулятор — сразу видно выгоду в рублях
+
+---
+
+## 2. Идеальная структура документа проекта
+
+### Анализ текущего project.md
+
+| Блок | Статус | Что нужно |
+|---|---|---|
+| Назначение | Есть (размыто) | Уточнить в 1–2 строки |
+| Поток данных | **Отсутствует** | Добавить схему |
+| Column Map | Частично (в тексте) | Оформить таблицей |
+| Бизнес-правила | Размазаны по разделам | Консолидировать |
+| Валидация / Риски | Есть — OK | — |
+| Roadmap | Есть (два варианта) | Упростить |
+| Технический стек | Есть — OK | Добавить «почему» |
+| Открытые вопросы | Есть — OK | — |
+| Non-goals | Есть — OK | — |
+| Changelog | **Отсутствует** | Добавить при запуске в прод |
+
+### Идеальная структура (7 обязательных блоков)
+
+**1. Назначение** — одна строка: что делает, для кого, какую боль решает
+
+**2. Поток данных (Data Flow)** — схема:
+```
+ostatki-Platina.xlsx → парсер → БД/таблица → сопоставление → наценка → InSales API
+```
+Самый частый вопрос при отладке — "откуда взялось это значение?"
+
+**3. Column Map** — таблица для каждого файла:
+| Колонка | Название в файле | Поле системы | Тип | Правило |
+|---|---|---|---|---|
+| A (0) | Артикул | supplier_sku | string | — |
+| Q (16) | 6 ПЛАТИНОВЫЙ | supplier_price | float | только этот столбец |
+| R (17) | Остаток | stock | int | — |
+
+**4. Бизнес-правила** — компактный список в одном месте
+
+**5. Валидация и риски** — что проверяется, что блокирует выгрузку
+
+**6. Roadmap** — активный этап с чекбоксами, остальные без
+
+**7. Технический стек** — таблица: слой → технология → причина выбора
+
+---
+
+## 3. InSales API
+
+### Авторизация
+Basic Auth: `api_key:api_password` в заголовке или в URL.
+Ключи: бэкенд InSales → Приложения → Частные приложения → Добавить.
+
+### Ключевые эндпоинты
+
+```
+GET  /admin/products.json?page=1&per_page=100   — список товаров (макс. 100/страница)
+GET  /admin/products/:id.json                   — один товар
+PUT  /admin/products/:id/variants/:vid.json     — обновить вариант
+PUT  /admin/stock_items/:id.json                — обновить остаток (если несколько складов)
+```
+
+### Обновление варианта
+
+```js
+PUT /admin/products/123/variants/456.json
+Body: { "variant": { "price": "1990.00", "quantity": 5, "sku": "ми4447" } }
+```
+
+### Важные ограничения
+- **Нет batch-эндпоинта** — каждый вариант отдельным PUT-запросом
+- **Нет поиска по артикулу** — нужно заранее построить карту `sku → {product_id, variant_id}`
+- **Лимит: 500 запросов / 5 минут** → рекомендуемый темп 400 req/min
+- При `quantity` на варианте — работает только при **одном складе**; при нескольких нужен `/stock_items`
+
+### Стратегия для 15 000 вариантов
+
+```
+1. Первый запуск: выкачать весь каталог (~150 запросов по 100 товаров)
+2. Сохранить карту: sku → { product_id, variant_id } в БД
+3. При обновлении: сравнить прайс с предыдущим, обновлять только изменившиеся
+4. Темп: очередь с throttle 400 req/min, пачки по 10–20 параллельных запросов
+5. При 429: ждать Retry-After и повторить
+```
+
+### Пример (Node.js)
+
+```js
+const axios = require('axios');
+const AUTH = { username: process.env.INSALES_KEY, password: process.env.INSALES_PASS };
+const BASE = 'https://carstvo-sna.myinsales.ru';
+
+async function updateVariant(productId, variantId, price, quantity) {
+  return axios.put(
+    `${BASE}/admin/products/${productId}/variants/${variantId}.json`,
+    { variant: { price: String(price), quantity } },
+    { auth: AUTH }
+  );
+}
+```
+
+### Что уточнить на живом магазине
+- Точный субдомен `*.myinsales.ru` для carstvo-sna.ru
+- Один склад или несколько (влияет на эндпоинт остатков)
+- Фактический лимит запросов (зависит от тарифа)
+
+---
+
+## 4. Google Apps Script: ограничения и возможности
+
+### Главный вывод
+Apps Script **не читает .xlsx напрямую**. Нужна конвертация через Drive API. При правильном подходе 10 600 строк обрабатываются за 3–5 секунд.
+
+### Как читать .xlsx
+
+```js
+// Конвертируем xlsx → Google Sheet через Drive API
+function convertAndRead(xlsxFileId) {
+  const tempFile = Drive.Files.copy(
+    { title: 'temp', mimeType: 'application/vnd.google-apps.spreadsheet' },
+    xlsxFileId
+  );
+  const sheet = SpreadsheetApp.openById(tempFile.id).getSheets()[0];
+  const data = sheet.getRange(8, 1, sheet.getLastRow() - 7, 20).getValues();
+  DriveApp.getFileById(tempFile.id).setTrashed(true); // удаляем временный файл
+  return data;
+}
+```
+
+### Критичное правило производительности
+Всегда читать одним вызовом `getValues()`, не построчно:
+
+```js
+// Правильно: один вызов — ~3-5 сек для 10 000 строк
+const data = sheet.getRange(8, 1, 10600, 20).getValues();
+const filtered = data.filter(row => row[16] && row[16] !== 0); // фильтр строк-групп
+
+// Неправильно: построчное чтение — таймаут через 20 минут
+for (let i = 0; i < 10600; i++) { sheet.getRange(i+1, 17).getValue(); }
+```
+
+### Лимиты
+| Параметр | Обычный аккаунт | Workspace |
+|---|---|---|
+| Время выполнения | 6 мин | 30 мин |
+| UrlFetchApp запросов/день | 20 000 | 100 000 |
+| Параллельные HTTP-запросы | Нет (только последовательно) | Нет |
+
+### Обход лимита 6 минут (чанки + триггеры)
+
+```js
+function processInChunks() {
+  const props = PropertiesService.getScriptProperties();
+  const startRow = parseInt(props.getProperty('lastRow') || '8');
+  // ... обработать CHUNK_SIZE строк ...
+  props.setProperty('lastRow', String(endRow + 1));
+  ScriptApp.newTrigger('processInChunks').timeBased().after(60000).create();
+}
+```
+
+### HTTP-запросы к InSales из Apps Script
+
+```js
+function updateVariant(productId, variantId, price) {
+  const url = `https://carstvo-sna.myinsales.ru/admin/products/${productId}/variants/${variantId}.json`;
+  UrlFetchApp.fetch(url, {
+    method: 'PUT',
+    contentType: 'application/json',
+    headers: { 'Authorization': 'Basic ' + Utilities.base64Encode(KEY + ':' + PASS) },
+    payload: JSON.stringify({ variant: { price: String(price) } }),
+    muteHttpExceptions: true
+  });
+}
+```
+
+### Вывод по Google Таблице
+Apps Script оправдан только как быстрый MVP. Node.js + xlsx решает те же задачи без лимитов и плясок с конвертацией файлов.
+
+---
+
+## 5. AG Grid: настройка для 15 000 строк
+
+### Выбор библиотеки
+**AG Grid Community (MIT)** — единственный разумный выбор для данной задачи.
+
+| Критерий | AG Grid Community | TanStack Table |
+|---|---|---|
+| Виртуализация | Встроена | Нужен внешний пакет |
+| Row Grouping | Встроена | Ручная реализация |
+| Inline editing | Встроена | Ручная реализация |
+| Row Class Rules | Встроена | Через rowProps |
+| Порог комфорта | 100 000+ строк | ~5 000 без virtualizer |
+
+TanStack потребует 2–3 недели лишней работы без гарантии производительности.
+
+### Ключевые настройки
+
+```jsx
+<AgGridReact
+  rowBuffer={20}
+  animateRows={false}        // ВАЖНО: анимация убивает перф
+  getRowId={p => p.data.id}  // стабильные обновления
+  groupDefaultExpanded={0}   // все группы свёрнуты
+  rowSelection="multiple"
+  defaultColDef={{ resizable: true, sortable: true, filter: true }}
+/>
+```
+
+### Группировка вариантов (Row Grouping)
+
+```jsx
+const columnDefs = useMemo(() => [
+  { field: 'baseArticle', rowGroup: true, hide: true }, // группировка по базовому артикулу
+  { field: 'article', headerName: 'Артикул' },
+  { field: 'supplierPrice', headerName: 'Цена пост.' },
+  { field: 'markup', headerName: 'Наценка %', editable: true },
+  { field: 'finalPrice', headerName: 'Итог. цена' },
+  { field: 'stock', headerName: 'Остаток' },
+], []);
+```
+
+### Статусы строк (Row Class Rules)
+
+```jsx
+const rowClassRules = {
+  'row-new':     p => p.data?.status === 'new',
+  'row-changed': p => p.data?.priceChanged,
+  'row-missing': p => p.data?.inStore && !p.data?.inSupplier,
+  'row-zero':    p => !p.data?.supplierPrice,
+};
+```
+
+```css
+.row-new     { background: #e6f4ea; }
+.row-changed { background: #fff3cd; }
+.row-missing { background: #fde8e8; }
+.row-zero    { opacity: 0.6; }
+```
+
+### Inline-редактирование с пересчётом
+
+```jsx
+valueSetter: (params) => {
+  const markup = parseFloat(params.newValue);
+  if (isNaN(markup)) return false;
+  params.data.markup = markup;
+  params.data.finalPrice = Math.round(params.data.supplierPrice * (1 + markup / 100));
+  return true;
+},
+// После изменения — обновить только одну строку:
+event.api.refreshCells({ rowNodes: [event.node], columns: ['finalPrice'], force: true });
+```
+
+### Правила производительности
+- `useMemo` для columnDefs и defaultColDef — обязательно
+- Обновлять через `applyTransaction`, не через `setRowData`
+- Не хранить rowData в `useState` при частых изменениях — использовать `useRef`
+
+---
+
+## 6. UX-паттерны
+
+### Статусы товаров в таблице
+Фиксированная колонка `Status` с цветными чипами + кнопки-фильтры над таблицей:
+
+```
+[ Все (15 234) ] [ Новые (47) ] [ Изменилась цена (312) ] [ Проблемные (89) ]
+```
+
+| Статус | Цвет | Действие |
+|---|---|---|
+| Новый | синий | требует решения: добавить или нет |
+| Цена изменилась | жёлтый | показать было → стало |
+| Нет у поставщика | красный | не удалять, только пометить |
+| Нулевая цена | серый | автоисключить из выгрузки |
+
+### Import Preview (3 шага)
+```
+[1. Загрузить файл] → [2. Проверить изменения] → [3. Подтвердить]
+```
+На шаге 2 — diff-таблица:
+
+| Артикул | Было | Станет | Δ |
+|---|---|---|---|
+| ми4447 | 1 200 ₽ | 1 450 ₽ | +20% ↑ |
+| ми5910 | 980 ₽ | 0 ₽ | ⚠ нулевая |
+
+Summary сверху: "Будет обновлено: 8 934 / Новых: 47 / Пропало: 120 / Проблемных: 89"
+
+### Прогресс выгрузки
+```
+███████░░░░░  847 / 2 000  •  Ошибок: 3  •  Осталось ~4 мин
+[Показать лог]  [Отменить]
+```
+Реализация: SSE (Server-Sent Events) или polling `/api/jobs/:id` каждые 2 сек.
+
+### Bulk Actions (массовые операции)
+Floating bar появляется при выборе строк:
+```
+[ 47 товаров выбрано ] [Применить наценку ▼] [Выгрузить в InSales] [Снять выделение]
+```
+
+### Предупреждения об аномалиях
+- Изменение цены >30% → жёлтое предупреждение в строке
+- Изменение цены >50% → красное, требует ручного подтверждения
+- Цена = 0 → красное, автоисключение из выгрузки
+- Товар исчез из прайса → оранжевое, не удалять автоматически
+
+### Column Mapping при импорте
+Select-mapper — для MVP достаточно:
+```
+Колонка файла         →  Поле системы
+A: Артикул            →  [Артикул ▼]
+Q: 6 ПЛАТИНОВЫЙ       →  [Цена поставщика ▼] ← автоопределение по заголовку
+R: Остаток            →  [Остаток ▼]
+```
+Маппинг сохраняется и применяется автоматически при следующем импорте.
+
+### История цен
+Sparkline в строке + дельта-бейдж:
+```
+1 450 ₽  [▁▂▄▆█]  +250 ₽ (+20%) ↑
+```
+Tooltip при наведении — таблица последних 5 значений с датами.
+
+---
+
+## 7. Приоритет реализации
+
+| # | Паттерн | Этап | Сложность |
+|---|---|---|---|
+| 1 | Статусные чипы + фильтры | MVP | Низкая |
+| 2 | Import Preview с diff | MVP | Средняя |
+| 3 | Предупреждения об аномалиях | MVP | Низкая |
+| 4 | Прогресс выгрузки | MVP | Средняя |
+| 5 | Column Mapping при импорте | MVP | Высокая |
+| 6 | Bulk Actions | Этап 2 | Средняя |
+| 7 | Delta-бейдж на цене | Этап 2 | Низкая |
+| 8 | Sparkline истории цены | Этап 3 | Высокая |
