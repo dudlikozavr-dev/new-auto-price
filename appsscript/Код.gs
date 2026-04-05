@@ -124,19 +124,19 @@ function шаг2_Импорт() {
 
 // ШАГ 1: Проверить наличие файла на Drive (конвертация не нужна для CSV)
 function шаг1_КонвертироватьМойПрайс() {
-  var files = DriveApp.searchFiles('title contains "shop_products_prices_and_stocks" and trashed = false');
+  var files = DriveApp.searchFiles('title contains "mi_products" and trashed = false');
   if (!files.hasNext()) {
-    SpreadsheetApp.getUi().alert('Файл shop_products_prices_and_stocks*.csv не найден на Drive.\nЗагрузи файл на Google Drive и повтори.');
+    SpreadsheetApp.getUi().alert('Файл mi_products*.csv не найден на Drive.\nЗагрузи файл на Google Drive и повтори.');
     return;
   }
   SpreadsheetApp.getUi().alert('Файл найден. Запусти шаг2_ИмпортМойПрайс');
 }
 
-// ШАГ 2: Импорт моего прайса из CSV (InSales выгрузка)
+// ШАГ 2: Импорт моего прайса из CSV (InSales выгрузка, только ми*)
 function шаг2_ИмпортМойПрайс() {
-  var files = DriveApp.searchFiles('title contains "shop_products_prices_and_stocks" and trashed = false');
+  var files = DriveApp.searchFiles('title contains "mi_products" and trashed = false');
   if (!files.hasNext()) {
-    SpreadsheetApp.getUi().alert('Файл shop_products_prices_and_stocks*.csv не найден на Drive');
+    SpreadsheetApp.getUi().alert('Файл mi_products*.csv не найден на Drive');
     return;
   }
 
