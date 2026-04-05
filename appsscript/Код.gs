@@ -192,6 +192,36 @@ function обновитьСводную() {
   var svodSheet = ss.getSheetByName('Сводная');
   var novSheet = ss.getSheetByName('Новые товары');
 
+  // Читаем наценки из Настройки
+  var settSheet = ss.getSheetByName('Настройки');
+  var baseMarkup = 80;
+  var categoryMarkup = {};
+  if (settSheet) {
+    var b1 = parseFloat(settSheet.getRange('B1').getValue());
+    if (!isNaN(b1) && b1 > 0) baseMarkup = b1;
+    var settData = settSheet.getRange(4, 1, 10, 2).getValues();
+    for (var si = 0; si < settData.length; si++) {
+      var cat = String(settData[si][0]).trim();
+      var pct = parseFloat(settData[si][1]);
+      if (cat && !isNaN(pct)) categoryMarkup[cat.toLowerCase()] = pct;
+    }
+  }
+
+  function getMarkup(name) {
+    var n = String(name).toLowerCase();
+    for (var c in categoryMarkup) {
+      if (n.indexOf(c) !== -1) return categoryMarkup[c];
+    }
+    return baseMarkup;
+  }
+
+  function calcPrice(suppPrice, name) {
+    var price = parseFloat(String(suppPrice).replace(',', '.'));
+    if (isNaN(price) || price <= 0) return 0;
+    var markup = getMarkup(name);
+    return Math.round(price * (1 + markup / 100));
+  }
+
   // Поставщик: A=артикул, B=название, C=размер+цвет, D=штрихкод, E=цена, F=остаток
   var suppLastRow = suppSheet.getLastRow();
   if (suppLastRow < 2) { SpreadsheetApp.getUi().alert('Лист Поставщик пуст'); return; }
@@ -258,19 +288,19 @@ function обновитьСводную() {
       suppMatched[matchIdx] = true;
       var sr = suppData[matchIdx];
       svodRows.push([
-        myArt,       // A: Артикул мой
-        myBase,      // B: Базовый артикул
-        sr[1],       // C: Название
-        sr[2],       // D: Размер+цвет
-        sr[3],       // E: Штрихкод поставщика
-        sr[4],       // F: Цена поставщика
-        'Совпал',    // G: Статус
-        myRow[4],    // H: Старая цена
-        myRow[4],    // I: Цена продажи
-        sr[5],       // J: Остаток поставщика
-        myBarcode,   // K: Штрихкод мой
-        myRow[1],    // L: ID_варианта
-        myRow[0]     // M: ID_товара
+        myArt,                        // A: Артикул мой
+        myBase,                       // B: Базовый артикул
+        sr[1],                        // C: Название
+        sr[2],                        // D: Размер+цвет
+        sr[3],                        // E: Штрихкод поставщика
+        sr[4],                        // F: Цена поставщика
+        'Совпал',                     // G: Статус
+        myRow[4],                     // H: Старая цена
+        calcPrice(sr[4], sr[1]),      // I: Цена продажи = цена пост. × наценка
+        sr[5],                        // J: Остаток поставщика
+        myBarcode,                    // K: Штрихкод мой
+        myRow[1],                     // L: ID_варианта
+        myRow[0]                      // M: ID_товара
       ]);
     } else {
       svodRows.push([
