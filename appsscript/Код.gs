@@ -122,55 +122,48 @@ function шаг2_Импорт() {
   SpreadsheetApp.getUi().alert('Загружено строк: ' + result.length);
 }
 
-// ШАГ 1: Конвертировать мой прайс
+// ШАГ 1: Проверить наличие файла на Drive (конвертация не нужна для CSV)
 function шаг1_КонвертироватьМойПрайс() {
-  var files = DriveApp.getFilesByName('price-carstvo-sna.xls');
+  var files = DriveApp.searchFiles('title contains "shop_products_prices_and_stocks" and trashed = false');
   if (!files.hasNext()) {
-    SpreadsheetApp.getUi().alert('Файл price-carstvo-sna.xls не найден на Drive');
+    SpreadsheetApp.getUi().alert('Файл shop_products_prices_and_stocks*.csv не найден на Drive.\nЗагрузи файл на Google Drive и повтори.');
     return;
   }
-  var fileId = files.next().getId();
-  var tempFile = Drive.Files.copy(
-    { name: '_temp_mystore', mimeType: 'application/vnd.google-apps.spreadsheet' },
-    fileId
-  );
-  PropertiesService.getScriptProperties().setProperty('tempMyStoreId', tempFile.id);
-  SpreadsheetApp.getUi().alert('Конвертация готова. Теперь запусти шаг2_ИмпортМойПрайс');
+  SpreadsheetApp.getUi().alert('Файл найден. Запусти шаг2_ИмпортМойПрайс');
 }
 
-// ШАГ 2: Импорт моего прайса
+// ШАГ 2: Импорт моего прайса из CSV (InSales выгрузка)
 function шаг2_ИмпортМойПрайс() {
-  var tempId = PropertiesService.getScriptProperties().getProperty('tempMyStoreId');
-
-  var ss;
-  if (tempId) {
-    ss = SpreadsheetApp.openById(tempId);
-  } else {
-    var files = DriveApp.getFilesByName('price-carstvo-sna');
-    if (!files.hasNext()) {
-      SpreadsheetApp.getUi().alert('Файл price-carstvo-sna не найден на Drive');
-      return;
-    }
-    ss = SpreadsheetApp.openById(files.next().getId());
-    tempId = null;
+  var files = DriveApp.searchFiles('title contains "shop_products_prices_and_stocks" and trashed = false');
+  if (!files.hasNext()) {
+    SpreadsheetApp.getUi().alert('Файл shop_products_prices_and_stocks*.csv не найден на Drive');
+    return;
   }
 
-  var sheet = ss.getSheets()[0];
-  var lastRow = sheet.getLastRow();
-  var data = sheet.getRange(2, 1, lastRow - 1, 30).getValues();
+  var file = files.next();
+  while (files.hasNext()) {
+    var next = files.next();
+    if (next.getDateCreated() > file.getDateCreated()) file = next;
+  }
 
+  var content = file.getBlob().getDataAsString('UTF-16LE');
+  if (content.charCodeAt(0) === 0xFEFF) content = content.slice(1);
+
+  var lines = content.split('\n');
   var result = [];
-  for (var i = 0; i < data.length; i++) {
-    var row = data[i];
-    var articul = row[23];
+
+  for (var i = 1; i < lines.length; i++) {
+    var cols = lines[i].split('\t');
+    if (cols.length < 9) continue;
+    var articul = cols[2].trim();
     if (!articul) continue;
     result.push([
-      row[0],   // A: ID_товара
-      row[22],  // B: ID_варианта
-      articul,  // C: Артикул
-      row[24],  // D: Штрихкод
-      row[26],  // E: Цена_продажи
-      row[29]   // F: Остаток
+      '',              // A: ID_товара (нет в CSV)
+      cols[0].trim(),  // B: ID_варианта
+      articul,         // C: Артикул
+      '',              // D: Штрихкод (нет в CSV)
+      cols[3].trim(),  // E: Цена_продажи
+      cols[8].trim()   // F: Остаток
     ]);
   }
 
@@ -180,11 +173,6 @@ function шаг2_ИмпортМойПрайс() {
   }
   if (result.length > 0) {
     destSheet.getRange(2, 1, result.length, 6).setValues(result);
-  }
-
-  if (tempId) {
-    Drive.Files.remove(tempId);
-    PropertiesService.getScriptProperties().deleteProperty('tempMyStoreId');
   }
   SpreadsheetApp.getUi().alert('Загружено строк: ' + result.length);
 }
@@ -321,7 +309,7 @@ function обновитьСводную() {
   );
 }
 
-// ТЕСТ: Выгрузка 5 строк в InSales по SKU
+// ТЕСТ: Выгрузка 5 строк в InSales по ID варианта
 function тестВыгрузки5строк() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName('Сводная');
@@ -331,47 +319,36 @@ function тестВыгрузки5строк() {
   for (var i = 1; i < data.length; i++) {
     if (data[i][6] === 'Совпал' && toUpdate.length < 5) {
       toUpdate.push({
-        productId: data[i][12],  // M: ID_товара
-        sku: data[i][0],         // A: Артикул
-        price: data[i][8],       // I: Цена_продажи
-        stock: data[i][9]        // J: Остаток_поставщика
+        variantId: data[i][11],  // L: ID_варианта
+        sku: data[i][0],          // A: Артикул
+        price: data[i][8],        // I: Цена_продажи
+        stock: data[i][9]         // J: Остаток
       });
     }
-  }
-
-  var productIds = [];
-  toUpdate.forEach(function(x) {
-    if (productIds.indexOf(x.productId) === -1) productIds.push(x.productId);
-  });
-
-  var skuToVariant = {};
-  for (var p = 0; p < productIds.length; p++) {
-    var resp = apiGet('/admin/products/' + productIds[p] + '/variants.json');
-    if (resp.code === 200) {
-      var variants = JSON.parse(resp.body);
-      variants.forEach(function(v) {
-        skuToVariant[v.sku.toLowerCase()] = { id: v.id, productId: productIds[p] };
-      });
-    }
-    Utilities.sleep(300);
   }
 
   var results = [];
   for (var j = 0; j < toUpdate.length; j++) {
     var item = toUpdate[j];
-    var variantInfo = skuToVariant[item.sku.toLowerCase()];
-
-    if (!variantInfo) {
-      results.push(item.sku + ': SKU не найден в API');
+    if (!item.variantId) {
+      results.push(item.sku + ': нет ID варианта');
       continue;
     }
 
-    var resp2 = apiPut(
-      '/admin/products/' + variantInfo.productId + '/variants/' + variantInfo.id + '.json',
+    var getResp = apiGet('/admin/products/variants/' + item.variantId + '.json');
+    if (getResp.code !== 200) {
+      results.push(item.sku + ': вариант не найден (' + getResp.code + ')');
+      Utilities.sleep(300);
+      continue;
+    }
+    var productId = JSON.parse(getResp.body).product_id;
+
+    var putResp = apiPut(
+      '/admin/products/' + productId + '/variants/' + item.variantId + '.json',
       { variant: { price: item.price, quantity: item.stock } }
     );
 
-    var code = resp2.code;
+    var code = putResp.code;
     results.push(item.sku + ': ' + code + (code === 200 ? ' OK' : ' ОШИБКА'));
     Utilities.sleep(300);
   }
