@@ -122,49 +122,57 @@ function шаг2_Импорт() {
   SpreadsheetApp.getUi().alert('Загружено строк: ' + result.length);
 }
 
-// ШАГ 1: Проверить наличие файла на Drive (конвертация не нужна для CSV)
+// ШАГ 1: Конвертировать mi_products CSV в Google Sheets на Drive
 function шаг1_КонвертироватьМойПрайс() {
   var files = DriveApp.searchFiles('title contains "mi_products" and trashed = false');
   if (!files.hasNext()) {
     SpreadsheetApp.getUi().alert('Файл mi_products*.csv не найден на Drive.\nЗагрузи файл на Google Drive и повтори.');
     return;
   }
-  SpreadsheetApp.getUi().alert('Файл найден. Запусти шаг2_ИмпортМойПрайс');
-}
-
-// ШАГ 2: Импорт моего прайса из CSV (InSales выгрузка, только ми*)
-function шаг2_ИмпортМойПрайс() {
-  var files = DriveApp.searchFiles('title contains "mi_products" and trashed = false');
-  if (!files.hasNext()) {
-    SpreadsheetApp.getUi().alert('Файл mi_products*.csv не найден на Drive');
-    return;
-  }
-
   var file = files.next();
   while (files.hasNext()) {
     var next = files.next();
     if (next.getDateCreated() > file.getDateCreated()) file = next;
   }
 
-  var content = file.getBlob().getDataAsString('UTF-8');
+  var tempFile = Drive.Files.copy(
+    { name: '_temp_mystore', mimeType: 'application/vnd.google-apps.spreadsheet' },
+    file.getId()
+  );
+  PropertiesService.getScriptProperties().setProperty('tempMyStoreId', tempFile.id);
+  SpreadsheetApp.getUi().alert('Конвертация готова (' + file.getName() + ').\nТеперь запусти шаг2_ИмпортМойПрайс');
+}
 
-  var lines = content.split('\n');
+// ШАГ 2: Импорт моего прайса из сконвертированного файла
+function шаг2_ИмпортМойПрайс() {
+  var tempId = PropertiesService.getScriptProperties().getProperty('tempMyStoreId');
+  if (!tempId) {
+    SpreadsheetApp.getUi().alert('Сначала запусти шаг1_КонвертироватьМойПрайс');
+    return;
+  }
+
+  var tempSS = SpreadsheetApp.openById(tempId);
+  var sheet = tempSS.getSheets()[0];
+  var lastRow = sheet.getLastRow();
+  var data = sheet.getRange(2, 1, lastRow - 1, 9).getValues();
+
   var result = [];
-
-  for (var i = 1; i < lines.length; i++) {
-    var cols = lines[i].split('\t');
-    if (cols.length < 9) continue;
-    var articul = cols[2].trim();
+  for (var i = 0; i < data.length; i++) {
+    var row = data[i];
+    var articul = String(row[2]).trim();
     if (!articul) continue;
     result.push([
-      '',              // A: ID_товара (нет в CSV)
-      cols[0].trim(),  // B: ID_варианта
-      articul,         // C: Артикул
-      '',              // D: Штрихкод (нет в CSV)
-      cols[3].trim(),  // E: Цена_продажи
-      cols[8].trim()   // F: Остаток
+      '',                     // A: ID_товара (нет в CSV)
+      String(row[0]).trim(),  // B: ID_варианта
+      articul,                // C: Артикул
+      '',                     // D: Штрихкод (нет в CSV)
+      row[3],                 // E: Цена_продажи
+      row[8]                  // F: Остаток
     ]);
   }
+
+  Drive.Files.remove(tempId);
+  PropertiesService.getScriptProperties().deleteProperty('tempMyStoreId');
 
   var destSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Мой прайс');
   if (destSheet.getLastRow() > 1) {
