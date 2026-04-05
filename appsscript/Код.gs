@@ -37,12 +37,14 @@ function обновитьПрайсПоставщика() {
   }
 
   var blob = response.getBlob().setName('ostatki-Platina.xlsx');
-  var file = Drive.Files.create(
+  var xlsxFile = DriveApp.createFile(blob);
+  var converted = Drive.Files.copy(
     { name: '_temp_platina_auto', mimeType: 'application/vnd.google-apps.spreadsheet' },
-    blob
+    xlsxFile.getId()
   );
+  xlsxFile.setTrashed(true);
 
-  var tempSS = SpreadsheetApp.openById(file.id);
+  var tempSS = SpreadsheetApp.openById(converted.id);
   var sheet = tempSS.getSheets()[0];
   var lastRow = sheet.getLastRow();
   var data = sheet.getRange(8, 1, lastRow - 7, 18).getValues();
@@ -64,7 +66,7 @@ function обновитьПрайсПоставщика() {
     destSheet.getRange(2, 1, result.length, 6).setValues(result);
   }
 
-  Drive.Files.remove(file.id);
+  Drive.Files.remove(converted.id);
 
   обновитьСводную();
 }
