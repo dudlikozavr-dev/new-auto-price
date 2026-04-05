@@ -270,18 +270,37 @@ function обновитьСводную() {
       if (suppByBarcode[myBarcode] !== undefined) matchIdx = suppByBarcode[myBarcode];
     }
 
-    // 3. По базовому артикулу (уточнение по штрихкоду поставщика)
+    // 3. По базовому артикулу
     if (matchIdx === null && suppByBase[myBase]) {
+      var candidates = suppByBase[myBase];
+      var myRest = myArtNorm.slice(myBase.length).trim(); // размер/цвет из артикула магазина
+
+      // Сначала по штрихкоду среди кандидатов
       if (myBarcode && myBarcode !== '0' && myBarcode !== '') {
-        for (var k = 0; k < suppByBase[myBase].length; k++) {
-          var candIdx = suppByBase[myBase][k];
-          if (String(suppData[candIdx][3]).trim() === myBarcode) {
-            matchIdx = candIdx;
+        for (var k = 0; k < candidates.length; k++) {
+          if (String(suppData[candidates[k]][3]).trim() === myBarcode) {
+            matchIdx = candidates[k];
             break;
           }
         }
       }
-      if (matchIdx === null) matchIdx = suppByBase[myBase][0];
+
+      // Если артикул без размера/цвета — берём первого кандидата
+      if (matchIdx === null && !myRest) {
+        matchIdx = candidates[0];
+      }
+
+      // Если есть размер/цвет — ищем кандидата с совпадающим размером/цветом
+      if (matchIdx === null && myRest) {
+        for (var k = 0; k < candidates.length; k++) {
+          var sc = String(suppData[candidates[k]][2]).trim().toLowerCase();
+          if (sc && (myRest === sc || myRest.indexOf(sc) !== -1 || sc.indexOf(myRest) !== -1)) {
+            matchIdx = candidates[k];
+            break;
+          }
+        }
+        // Если совпадения по размеру/цвету нет — не матчим (Нет у поставщика)
+      }
     }
 
     if (matchIdx !== null) {
