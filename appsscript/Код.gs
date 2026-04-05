@@ -381,7 +381,8 @@ function тестВыгрузки5строк() {
       variantId: r[11],  // L: ID_варианта
       sku: r[0],          // A: Артикул
       price: r[8],        // I: Цена_продажи
-      stock: r[9]         // J: Остаток
+      stock: r[9],        // J: Остаток
+      suppPrice: r[5]     // F: Цена поставщика (себестоимость)
     };
   });
 
@@ -402,9 +403,16 @@ function тестВыгрузки5строк() {
     var variantData = JSON.parse(getResp.body);
     var productId = variantData.product_id;
 
+    var payload = { price: item.price, quantity: item.stock };
+    var currentCost = parseFloat(variantData.cost_price);
+    var newCost = parseFloat(item.suppPrice);
+    if (!isNaN(newCost) && newCost > 0 && currentCost !== newCost) {
+      payload.cost_price = newCost;
+    }
+
     var putResp = apiPut(
       '/admin/products/' + productId + '/variants/' + item.variantId + '.json',
-      { variant: { price: item.price, quantity: item.stock } }
+      { variant: payload }
     );
 
     var code = putResp.code;
