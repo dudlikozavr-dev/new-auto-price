@@ -363,13 +363,14 @@ function тестВыгрузки5строк() {
       continue;
     }
 
-    var getResp = apiGet('/admin/products/variants/' + item.variantId + '.json');
+    var getResp = apiGet('/admin/variants/' + item.variantId + '.json');
     if (getResp.code !== 200) {
       results.push(item.sku + ': вариант не найден (' + getResp.code + ')');
       Utilities.sleep(300);
       continue;
     }
-    var productId = JSON.parse(getResp.body).product_id;
+    var variantData = JSON.parse(getResp.body);
+    var productId = variantData.product_id;
 
     var putResp = apiPut(
       '/admin/products/' + productId + '/variants/' + item.variantId + '.json',
