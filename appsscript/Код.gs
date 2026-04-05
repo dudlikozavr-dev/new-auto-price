@@ -96,13 +96,21 @@ function шаг1_КонвертироватьМойПрайс() {
 // ШАГ 2: Импорт моего прайса
 function шаг2_ИмпортМойПрайс() {
   var tempId = PropertiesService.getScriptProperties().getProperty('tempMyStoreId');
-  if (!tempId) {
-    SpreadsheetApp.getUi().alert('Сначала запусти шаг1_КонвертироватьМойПрайс');
-    return;
+
+  var ss;
+  if (tempId) {
+    ss = SpreadsheetApp.openById(tempId);
+  } else {
+    var files = DriveApp.getFilesByName('price-carstvo-sna');
+    if (!files.hasNext()) {
+      SpreadsheetApp.getUi().alert('Файл price-carstvo-sna не найден на Drive');
+      return;
+    }
+    ss = SpreadsheetApp.openById(files.next().getId());
+    tempId = null;
   }
 
-  var tempSS = SpreadsheetApp.openById(tempId);
-  var sheet = tempSS.getSheets()[0];
+  var sheet = ss.getSheets()[0];
   var lastRow = sheet.getLastRow();
   var data = sheet.getRange(2, 1, lastRow - 1, 30).getValues();
 
@@ -130,8 +138,10 @@ function шаг2_ИмпортМойПрайс() {
     destSheet.getRange(2, 1, result.length, 6).setValues(result);
   }
 
-  Drive.Files.remove(tempId);
-  PropertiesService.getScriptProperties().deleteProperty('tempMyStoreId');
+  if (tempId) {
+    Drive.Files.remove(tempId);
+    PropertiesService.getScriptProperties().deleteProperty('tempMyStoreId');
+  }
   SpreadsheetApp.getUi().alert('Загружено строк: ' + result.length);
 }
 
