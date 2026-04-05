@@ -205,6 +205,7 @@ function обновитьСводную() {
   // Строим карты поставщика: базовый артикул → массив индексов; штрихкод → индекс
   var suppByBase = {};
   var suppByBarcode = {};
+  var suppByFullArt = {};
   for (var i = 0; i < suppData.length; i++) {
     var sArt = String(suppData[i][0]).trim().toLowerCase();
     var sBase = sArt.split(' ')[0];
@@ -212,6 +213,7 @@ function обновитьСводную() {
     if (!suppByBase[sBase]) suppByBase[sBase] = [];
     suppByBase[sBase].push(i);
     if (sBarcode && sBarcode !== '0' && sBarcode !== '') suppByBarcode[sBarcode] = i;
+    suppByFullArt[sArt] = i;
   }
 
   var suppMatched = {};
@@ -220,14 +222,24 @@ function обновитьСводную() {
   for (var j = 0; j < myData.length; j++) {
     var myRow = myData[j];
     var myArt = String(myRow[2]).trim();
-    var myBase = myArt.toLowerCase().split(' ')[0];
+    var myArtNorm = myArt.toLowerCase().trim();
+    var myBase = myArtNorm.split(' ')[0];
     var myBarcode = String(myRow[3]).trim();
 
     var matchIdx = null;
 
-    // Сначала по базовому артикулу
-    if (suppByBase[myBase]) {
-      // Уточнение по штрихкоду если есть
+    // 1. По полному артикулу (точное совпадение)
+    if (suppByFullArt[myArtNorm] !== undefined) {
+      matchIdx = suppByFullArt[myArtNorm];
+    }
+
+    // 2. По штрихкоду
+    if (matchIdx === null && myBarcode && myBarcode !== '0' && myBarcode !== '') {
+      if (suppByBarcode[myBarcode] !== undefined) matchIdx = suppByBarcode[myBarcode];
+    }
+
+    // 3. По базовому артикулу (уточнение по штрихкоду поставщика)
+    if (matchIdx === null && suppByBase[myBase]) {
       if (myBarcode && myBarcode !== '0' && myBarcode !== '') {
         for (var k = 0; k < suppByBase[myBase].length; k++) {
           var candIdx = suppByBase[myBase][k];
@@ -237,13 +249,7 @@ function обновитьСводную() {
           }
         }
       }
-      // Если по штрихкоду не нашли — берём первый по базовому артикулу
       if (matchIdx === null) matchIdx = suppByBase[myBase][0];
-    }
-
-    // Если по артикулу не нашли — ищем по штрихкоду
-    if (matchIdx === null && myBarcode && myBarcode !== '0' && myBarcode !== '') {
-      if (suppByBarcode[myBarcode] !== undefined) matchIdx = suppByBarcode[myBarcode];
     }
 
     if (matchIdx !== null) {
