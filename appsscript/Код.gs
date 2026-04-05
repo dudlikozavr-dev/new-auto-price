@@ -290,16 +290,20 @@ function обновитьСводную() {
         matchIdx = candidates[0];
       }
 
-      // Если есть размер/цвет — ищем кандидата с совпадающим размером/цветом
+      // Если есть размер/цвет — ищем кандидата по токенам (точное совпадение слов)
       if (matchIdx === null && myRest) {
+        var myTokens = myRest.split(/\s+/);
         for (var k = 0; k < candidates.length; k++) {
           var sc = String(suppData[candidates[k]][2]).trim().toLowerCase();
-          if (sc && (myRest === sc || myRest.indexOf(sc) !== -1 || sc.indexOf(myRest) !== -1)) {
-            matchIdx = candidates[k];
-            break;
+          if (!sc) continue;
+          var scTokens = sc.split(/\s+/);
+          var allFound = true;
+          for (var t = 0; t < scTokens.length; t++) {
+            if (myTokens.indexOf(scTokens[t]) === -1) { allFound = false; break; }
           }
+          if (allFound && scTokens.length === myTokens.length) { matchIdx = candidates[k]; break; }
         }
-        // Если совпадения по размеру/цвету нет — не матчим (Нет у поставщика)
+        // Если точного совпадения нет — не матчим (Нет у поставщика)
       }
     }
 
@@ -376,6 +380,73 @@ function обновитьСводную() {
     'Нет у поставщика (остаток обнулён): ' + нетУПост + '\n' +
     'Новые товары поставщика: ' + novRows.length
   );
+}
+
+// ПОЛНАЯ выгрузка всех совпавших строк в InSales (через триггер, ~80 строк в минуту)
+function полнаяВыгрузка() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var props = PropertiesService.getScriptProperties();
+  props.setProperty('uploadSSId', ss.getId());
+  props.setProperty('uploadCursor', '0');
+  props.setProperty('uploadOk', '0');
+  props.setProperty('uploadErr', '0');
+
+  ScriptApp.getProjectTriggers().forEach(function(t) {
+    if (t.getHandlerFunction() === 'uploadBatch') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('uploadBatch').timeBased().everyMinutes(1).create();
+
+  ss.getSheetByName('Настройки').getRange('D1').setValue('Выгрузка запущена...');
+  SpreadsheetApp.getUi().alert('Выгрузка запущена.\nПрогресс смотри в ячейке D1 листа Настройки.\nМожно закрыть это окно — выгрузка идёт в фоне.');
+}
+
+function uploadBatch() {
+  var props = PropertiesService.getScriptProperties();
+  var ssId = props.getProperty('uploadSSId');
+  var cursor = parseInt(props.getProperty('uploadCursor') || '0');
+  var ok = parseInt(props.getProperty('uploadOk') || '0');
+  var err = parseInt(props.getProperty('uploadErr') || '0');
+
+  var ss = SpreadsheetApp.openById(ssId);
+  var svodSheet = ss.getSheetByName('Сводная');
+  var settSheet = ss.getSheetByName('Настройки');
+  var data = svodSheet.getDataRange().getValues();
+
+  var matched = [];
+  for (var i = 1; i < data.length; i++) {
+    if (data[i][6] === 'Совпал' && data[i][11]) matched.push(data[i]);
+  }
+
+  if (cursor >= matched.length) {
+    ScriptApp.getProjectTriggers().forEach(function(t) {
+      if (t.getHandlerFunction() === 'uploadBatch') ScriptApp.deleteTrigger(t);
+    });
+    props.deleteProperty('uploadCursor');
+    settSheet.getRange('D1').setValue('Выгрузка завершена: ' + ok + ' OK, ' + err + ' ошибок');
+    return;
+  }
+
+  var BATCH = 80;
+  var end = Math.min(cursor + BATCH, matched.length);
+
+  for (var j = cursor; j < end; j++) {
+    var r = matched[j];
+    var vid = r[11];
+    var gr = apiGet('/admin/variants/' + vid + '.json');
+    if (gr.code !== 200) { err++; Utilities.sleep(150); continue; }
+    var vd = JSON.parse(gr.body);
+    var payload = { price: r[8], quantity: r[9] };
+    var cc = parseFloat(vd.cost_price), nc = parseFloat(r[5]);
+    if (!isNaN(nc) && nc > 0 && cc !== nc) payload.cost_price = nc;
+    var pr = apiPut('/admin/products/' + vd.product_id + '/variants/' + vid + '.json', { variant: payload });
+    if (pr.code === 200) ok++; else err++;
+    Utilities.sleep(150);
+  }
+
+  props.setProperty('uploadCursor', String(end));
+  props.setProperty('uploadOk', String(ok));
+  props.setProperty('uploadErr', String(err));
+  settSheet.getRange('D1').setValue('Выгрузка: ' + end + '/' + matched.length + ' (' + ok + ' OK, ' + err + ' ошибок)');
 }
 
 // ТЕСТ: Выгрузка 5 случайных строк в InSales по ID варианта
