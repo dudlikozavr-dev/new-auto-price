@@ -297,6 +297,11 @@ function обновитьСводную() {
   ]]);
   if (svodRows.length > 0) {
     svodSheet.getRange(2, 1, svodRows.length, 13).setValues(svodRows);
+    var colors = svodRows.map(function(r) {
+      var color = r[6] === 'Совпал' ? '#C6EFCE' : '#FFCCCC';
+      return new Array(13).fill(color);
+    });
+    svodSheet.getRange(2, 1, svodRows.length, 13).setBackgrounds(colors);
   }
 
   // Записываем Новые товары
