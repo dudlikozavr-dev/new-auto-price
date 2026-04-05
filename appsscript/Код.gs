@@ -145,6 +145,138 @@ function шаг2_ИмпортМойПрайс() {
   SpreadsheetApp.getUi().alert('Загружено строк: ' + result.length);
 }
 
+// Обновить Сводную и Новые товары
+function обновитьСводную() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var suppSheet = ss.getSheetByName('Поставщик');
+  var mySheet = ss.getSheetByName('Мой прайс');
+  var svodSheet = ss.getSheetByName('Сводная');
+  var novSheet = ss.getSheetByName('Новые товары');
+
+  // Поставщик: A=артикул, B=название, C=размер+цвет, D=штрихкод, E=цена, F=остаток
+  var suppLastRow = suppSheet.getLastRow();
+  if (suppLastRow < 2) { SpreadsheetApp.getUi().alert('Лист Поставщик пуст'); return; }
+  var suppData = suppSheet.getRange(2, 1, suppLastRow - 1, 6).getValues();
+
+  // Мой прайс: A=ID_товара, B=ID_варианта, C=артикул, D=штрихкод, E=цена_продажи, F=остаток
+  var myLastRow = mySheet.getLastRow();
+  if (myLastRow < 2) { SpreadsheetApp.getUi().alert('Лист Мой прайс пуст'); return; }
+  var myData = mySheet.getRange(2, 1, myLastRow - 1, 6).getValues();
+
+  // Строим карты поставщика: базовый артикул → массив индексов; штрихкод → индекс
+  var suppByBase = {};
+  var suppByBarcode = {};
+  for (var i = 0; i < suppData.length; i++) {
+    var sArt = String(suppData[i][0]).trim().toLowerCase();
+    var sBase = sArt.split(' ')[0];
+    var sBarcode = String(suppData[i][3]).trim();
+    if (!suppByBase[sBase]) suppByBase[sBase] = [];
+    suppByBase[sBase].push(i);
+    if (sBarcode && sBarcode !== '0' && sBarcode !== '') suppByBarcode[sBarcode] = i;
+  }
+
+  var suppMatched = {};
+  var svodRows = [];
+
+  for (var j = 0; j < myData.length; j++) {
+    var myRow = myData[j];
+    var myArt = String(myRow[2]).trim();
+    var myBase = myArt.toLowerCase().split(' ')[0];
+    var myBarcode = String(myRow[3]).trim();
+
+    var matchIdx = null;
+
+    // Сначала по базовому артикулу
+    if (suppByBase[myBase]) {
+      // Уточнение по штрихкоду если есть
+      if (myBarcode && myBarcode !== '0' && myBarcode !== '') {
+        for (var k = 0; k < suppByBase[myBase].length; k++) {
+          var candIdx = suppByBase[myBase][k];
+          if (String(suppData[candIdx][3]).trim() === myBarcode) {
+            matchIdx = candIdx;
+            break;
+          }
+        }
+      }
+      // Если по штрихкоду не нашли — берём первый по базовому артикулу
+      if (matchIdx === null) matchIdx = suppByBase[myBase][0];
+    }
+
+    // Если по артикулу не нашли — ищем по штрихкоду
+    if (matchIdx === null && myBarcode && myBarcode !== '0' && myBarcode !== '') {
+      if (suppByBarcode[myBarcode] !== undefined) matchIdx = suppByBarcode[myBarcode];
+    }
+
+    if (matchIdx !== null) {
+      suppMatched[matchIdx] = true;
+      var sr = suppData[matchIdx];
+      svodRows.push([
+        myArt,       // A: Артикул мой
+        myBase,      // B: Базовый артикул
+        sr[1],       // C: Название
+        sr[2],       // D: Размер+цвет
+        sr[3],       // E: Штрихкод поставщика
+        sr[4],       // F: Цена поставщика
+        'Совпал',    // G: Статус
+        myRow[4],    // H: Старая цена
+        myRow[4],    // I: Цена продажи
+        sr[5],       // J: Остаток поставщика
+        myBarcode,   // K: Штрихкод мой
+        myRow[1],    // L: ID_варианта
+        myRow[0]     // M: ID_товара
+      ]);
+    } else {
+      svodRows.push([
+        myArt,              // A
+        myBase,             // B
+        '', '', '', '',     // C-F
+        'Нет у поставщика', // G
+        myRow[4],           // H: Старая цена
+        myRow[4],           // I: Цена продажи
+        0,                  // J: Остаток = 0
+        myBarcode,          // K
+        myRow[1],           // L
+        myRow[0]            // M
+      ]);
+    }
+  }
+
+  // Записываем Сводную
+  svodSheet.clearContents();
+  svodSheet.getRange(1, 1, 1, 13).setValues([[
+    'Артикул', 'Базовый арт.', 'Название', 'Размер+цвет',
+    'Штрихкод пост.', 'Цена пост.', 'Статус', 'Старая цена',
+    'Цена продажи', 'Остаток', 'Штрихкод мой', 'ID_варианта', 'ID_товара'
+  ]]);
+  if (svodRows.length > 0) {
+    svodSheet.getRange(2, 1, svodRows.length, 13).setValues(svodRows);
+  }
+
+  // Записываем Новые товары
+  var novRows = [];
+  for (var s = 0; s < suppData.length; s++) {
+    if (!suppMatched[s]) {
+      var nr = suppData[s];
+      novRows.push([nr[0], nr[1], nr[2], nr[3], nr[4], nr[5]]);
+    }
+  }
+  novSheet.clearContents();
+  novSheet.getRange(1, 1, 1, 6).setValues([['Артикул', 'Название', 'Размер+цвет', 'Штрихкод', 'Цена пост.', 'Остаток']]);
+  if (novRows.length > 0) {
+    novSheet.getRange(2, 1, novRows.length, 6).setValues(novRows);
+    novSheet.getRange(2, 1, novRows.length, 6).setBackground('#FFCCCC');
+  }
+
+  var совпало = svodRows.filter(function(r) { return r[6] === 'Совпал'; }).length;
+  var нетУПост = svodRows.filter(function(r) { return r[6] === 'Нет у поставщика'; }).length;
+  SpreadsheetApp.getUi().alert(
+    'Готово!\n' +
+    'Совпало: ' + совпало + '\n' +
+    'Нет у поставщика (остаток обнулён): ' + нетУПост + '\n' +
+    'Новые товары поставщика: ' + novRows.length
+  );
+}
+
 // ТЕСТ: Выгрузка 5 строк в InSales по SKU
 function тестВыгрузки5строк() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
