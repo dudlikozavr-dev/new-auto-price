@@ -329,23 +329,31 @@ function обновитьСводную() {
   );
 }
 
-// ТЕСТ: Выгрузка 5 строк в InSales по ID варианта
+// ТЕСТ: Выгрузка 5 случайных строк в InSales по ID варианта
 function тестВыгрузки5строк() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName('Сводная');
   var data = sheet.getDataRange().getValues();
 
-  var toUpdate = [];
+  var matched = [];
   for (var i = 1; i < data.length; i++) {
-    if (data[i][6] === 'Совпал' && toUpdate.length < 5) {
-      toUpdate.push({
-        variantId: data[i][11],  // L: ID_варианта
-        sku: data[i][0],          // A: Артикул
-        price: data[i][8],        // I: Цена_продажи
-        stock: data[i][9]         // J: Остаток
-      });
-    }
+    if (data[i][6] === 'Совпал' && data[i][11]) matched.push(data[i]);
   }
+
+  // Перемешать и взять 5 случайных
+  for (var i = matched.length - 1; i > 0; i--) {
+    var j = Math.floor(Math.random() * (i + 1));
+    var tmp = matched[i]; matched[i] = matched[j]; matched[j] = tmp;
+  }
+
+  var toUpdate = matched.slice(0, 5).map(function(r) {
+    return {
+      variantId: r[11],  // L: ID_варианта
+      sku: r[0],          // A: Артикул
+      price: r[8],        // I: Цена_продажи
+      stock: r[9]         // J: Остаток
+    };
+  });
 
   var results = [];
   for (var j = 0; j < toUpdate.length; j++) {
