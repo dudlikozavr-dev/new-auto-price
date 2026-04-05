@@ -146,8 +146,7 @@ function шаг2_ИмпортМойПрайс() {
     if (next.getDateCreated() > file.getDateCreated()) file = next;
   }
 
-  var content = file.getBlob().getDataAsString('UTF-16LE');
-  if (content.charCodeAt(0) === 0xFEFF) content = content.slice(1);
+  var content = file.getBlob().getDataAsString('UTF-8');
 
   var lines = content.split('\n');
   var result = [];
