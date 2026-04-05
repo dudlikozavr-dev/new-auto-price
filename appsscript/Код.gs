@@ -37,7 +37,7 @@ function обновитьПрайсПоставщика() {
   }
 
   var blob = response.getBlob().setName('ostatki-Platina.xlsx');
-  var file = Drive.Files.insert(
+  var file = Drive.Files.create(
     { name: '_temp_platina_auto', mimeType: 'application/vnd.google-apps.spreadsheet' },
     blob
   );
