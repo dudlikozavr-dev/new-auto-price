@@ -26,6 +26,49 @@ function apiPut(path, payload) {
   return { code: response.getResponseCode(), body: response.getContentText() };
 }
 
+// Автоматическое обновление прайса поставщика по ссылке
+function обновитьПрайсПоставщика() {
+  var url = 'http://miamia.ru/1c/ostatki_Platina.xlsx';
+
+  var response = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
+  if (response.getResponseCode() !== 200) {
+    SpreadsheetApp.getUi().alert('Ошибка загрузки файла: ' + response.getResponseCode());
+    return;
+  }
+
+  var blob = response.getBlob().setName('ostatki-Platina.xlsx');
+  var file = Drive.Files.insert(
+    { name: '_temp_platina_auto', mimeType: 'application/vnd.google-apps.spreadsheet' },
+    blob
+  );
+
+  var tempSS = SpreadsheetApp.openById(file.id);
+  var sheet = tempSS.getSheets()[0];
+  var lastRow = sheet.getLastRow();
+  var data = sheet.getRange(8, 1, lastRow - 7, 18).getValues();
+
+  var result = [];
+  for (var i = 0; i < data.length; i++) {
+    var row = data[i];
+    var articul = row[0];
+    var cena = row[16];
+    if (!articul || parseFloat(String(cena).replace(',', '.')) == 0) continue;
+    result.push([articul, row[3], row[13], row[14], cena, row[17]]);
+  }
+
+  var destSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Поставщик');
+  if (destSheet.getLastRow() > 1) {
+    destSheet.getRange(2, 1, destSheet.getLastRow() - 1, 6).clearContent();
+  }
+  if (result.length > 0) {
+    destSheet.getRange(2, 1, result.length, 6).setValues(result);
+  }
+
+  Drive.Files.remove(file.id);
+
+  обновитьСводную();
+}
+
 // ШАГ 1: Конвертировать прайс поставщика
 function шаг1_Конвертировать() {
   var files = DriveApp.getFilesByName('ostatki-Platina.xlsx');
