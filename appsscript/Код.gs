@@ -455,7 +455,8 @@ function создатьФайлДляИмпорта() {
   var sheet = ss.getSheetByName('Сводная');
   var data = sheet.getDataRange().getValues();
 
-  var rows = [['ID варианта', 'Название', 'Артикул', 'Цена продажи', 'Старая цена', 'Начало периода', 'Себестоимость', 'Тип цен: скидка', 'Остаток'].join('\t')];
+  var lines = [];
+  lines.push('ID варианта\tНазвание товара или услуги\tАртикул\tЦена продажи\tСтарая цена\tНачало периода себестоимости\tСебестоимость\tТип цен: скидка\tОстаток');
 
   for (var i = 1; i < data.length; i++) {
     var r = data[i];
@@ -464,22 +465,31 @@ function создатьФайлДляИмпорта() {
 
     var price, cost, stock;
     if (r[6] === 'Совпал') {
-      price = r[8];  // Цена продажи с наценкой
-      cost  = r[5];  // Цена поставщика = себестоимость
-      stock = r[9];  // Остаток поставщика
+      price = Math.round(parseFloat(r[8]));
+      cost  = Math.round(parseFloat(r[5]));
+      stock = parseInt(r[9]);
     } else {
-      price = r[7];  // Старая цена (не меняем)
-      cost  = '';
+      price = Math.round(parseFloat(r[7]));
+      cost  = null;
       stock = 0;
     }
 
-    rows.push([variantId, r[2], r[0], price, '', '', cost, '', stock].join('\t'));
+    var priceStr = isNaN(price) ? '""' : (price + ',0');
+    var costStr  = (cost === null || isNaN(cost)) ? '""' : (cost + ',0');
+
+    lines.push([variantId, r[2], r[0], priceStr, '""', '""', costStr, '""', stock].join('\t'));
   }
 
-  var content = '\uFEFF' + rows.join('\r\n'); // UTF-8 BOM
+  // Кодируем в UTF-16 LE (формат оригинального экспорта InSales)
+  var content = lines.join('\r\n');
+  var bytes = [0xFF, 0xFE]; // BOM
+  for (var c = 0; c < content.length; c++) {
+    var code = content.charCodeAt(c);
+    bytes.push(code & 0xFF, (code >> 8) & 0xFF);
+  }
+
   var fileName = 'insales_import_' + Utilities.formatDate(new Date(), 'Europe/Moscow', 'yyyyMMdd_HHmm') + '.csv';
-  var blob = Utilities.newBlob(content, 'text/plain; charset=utf-8', fileName);
-  var file = DriveApp.createFile(blob);
+  var file = DriveApp.createFile(Utilities.newBlob(bytes, 'text/csv', fileName));
 
   SpreadsheetApp.getUi().alert(
     'Файл создан на Google Drive: ' + fileName + '\n\n' +
