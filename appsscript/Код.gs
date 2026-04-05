@@ -163,11 +163,10 @@ function шаг2_ИмпортМойПрайс() {
   for (var i = 0; i < data.length; i++) {
     var row = data[i];
     var articul = row[23];
-    var cena = row[26];
-    if (!articul || parseFloat(String(cena).replace(',', '.')) == 0) continue;
+    if (!articul) continue;
     result.push([
       row[0],   // A: ID_товара
-      row[22],  // B: ID_варианта (из XLS, не совпадает с API ID)
+      row[22],  // B: ID_варианта
       articul,  // C: Артикул
       row[24],  // D: Штрихкод
       row[26],  // E: Цена_продажи
