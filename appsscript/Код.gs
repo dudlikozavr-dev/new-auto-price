@@ -449,6 +449,45 @@ function uploadBatch() {
   settSheet.getRange('D1').setValue('Выгрузка: ' + end + '/' + matched.length + ' (' + ok + ' OK, ' + err + ' ошибок)');
 }
 
+// Создать CSV-файл для ручного импорта в InSales (Каталог → Импорт → Цены и остатки)
+function создатьФайлДляИмпорта() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName('Сводная');
+  var data = sheet.getDataRange().getValues();
+
+  var rows = [['ID варианта', 'Название', 'Артикул', 'Цена продажи', 'Старая цена', 'Начало периода', 'Себестоимость', 'Тип цен: скидка', 'Остаток'].join('\t')];
+
+  for (var i = 1; i < data.length; i++) {
+    var r = data[i];
+    var variantId = r[11];
+    if (!variantId) continue;
+
+    var price, cost, stock;
+    if (r[6] === 'Совпал') {
+      price = r[8];  // Цена продажи с наценкой
+      cost  = r[5];  // Цена поставщика = себестоимость
+      stock = r[9];  // Остаток поставщика
+    } else {
+      price = r[7];  // Старая цена (не меняем)
+      cost  = '';
+      stock = 0;
+    }
+
+    rows.push([variantId, r[2], r[0], price, '', '', cost, '', stock].join('\t'));
+  }
+
+  var content = '\uFEFF' + rows.join('\r\n'); // UTF-8 BOM
+  var fileName = 'insales_import_' + Utilities.formatDate(new Date(), 'Europe/Moscow', 'yyyyMMdd_HHmm') + '.csv';
+  var blob = Utilities.newBlob(content, 'text/plain; charset=utf-8', fileName);
+  var file = DriveApp.createFile(blob);
+
+  SpreadsheetApp.getUi().alert(
+    'Файл создан на Google Drive: ' + fileName + '\n\n' +
+    'Найди его в Drive, скачай и загрузи в InSales:\n' +
+    'Каталог → Импорт → Цены и остатки'
+  );
+}
+
 // ТЕСТ: Выгрузка 5 случайных строк в InSales по ID варианта
 function тестВыгрузки5строк() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
