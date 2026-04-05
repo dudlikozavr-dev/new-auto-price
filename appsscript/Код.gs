@@ -209,11 +209,13 @@ function обновитьСводную() {
   for (var i = 0; i < suppData.length; i++) {
     var sArt = String(suppData[i][0]).trim().toLowerCase();
     var sBase = sArt.split(' ')[0];
+    var sSizeColor = String(suppData[i][2]).trim().toLowerCase();
     var sBarcode = String(suppData[i][3]).trim();
     if (!suppByBase[sBase]) suppByBase[sBase] = [];
     suppByBase[sBase].push(i);
     if (sBarcode && sBarcode !== '0' && sBarcode !== '') suppByBarcode[sBarcode] = i;
     suppByFullArt[sArt] = i;
+    if (sSizeColor) suppByFullArt[sBase + ' ' + sSizeColor] = i;
   }
 
   var suppMatched = {};
