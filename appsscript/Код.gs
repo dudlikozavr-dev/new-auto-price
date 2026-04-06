@@ -167,7 +167,8 @@ function шаг2_ИмпортМойПрайс() {
       articul,                // C: Артикул
       '',                     // D: Штрихкод (нет в CSV)
       row[3],                 // E: Цена_продажи
-      row[8]                  // F: Остаток
+      row[8],                 // F: Остаток
+      String(row[1]).trim()   // G: Название товара
     ]);
   }
 
@@ -176,10 +177,10 @@ function шаг2_ИмпортМойПрайс() {
 
   var destSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Мой прайс');
   if (destSheet.getLastRow() > 1) {
-    destSheet.getRange(2, 1, destSheet.getLastRow() - 1, 6).clearContent();
+    destSheet.getRange(2, 1, destSheet.getLastRow() - 1, 7).clearContent();
   }
   if (result.length > 0) {
-    destSheet.getRange(2, 1, result.length, 6).setValues(result);
+    destSheet.getRange(2, 1, result.length, 7).setValues(result);
   }
   SpreadsheetApp.getUi().alert('Загружено строк: ' + result.length);
 }
@@ -227,10 +228,10 @@ function обновитьСводную() {
   if (suppLastRow < 2) { SpreadsheetApp.getUi().alert('Лист Поставщик пуст'); return; }
   var suppData = suppSheet.getRange(2, 1, suppLastRow - 1, 6).getValues();
 
-  // Мой прайс: A=ID_товара, B=ID_варианта, C=артикул, D=штрихкод, E=цена_продажи, F=остаток
+  // Мой прайс: A=ID_товара, B=ID_варианта, C=артикул, D=штрихкод, E=цена_продажи, F=остаток, G=название
   var myLastRow = mySheet.getLastRow();
   if (myLastRow < 2) { SpreadsheetApp.getUi().alert('Лист Мой прайс пуст'); return; }
-  var myData = mySheet.getRange(2, 1, myLastRow - 1, 6).getValues();
+  var myData = mySheet.getRange(2, 1, myLastRow - 1, 7).getValues();
 
   // Строим карты поставщика: базовый артикул → массив индексов; штрихкод → индекс
   var suppByBase = {};
@@ -327,16 +328,17 @@ function обновитьСводную() {
       ]);
     } else {
       svodRows.push([
-        myArt,              // A
-        myBase,             // B
-        '', '', '', '',     // C-F
-        'Нет у поставщика', // G
+        myArt,              // A: Артикул
+        myBase,             // B: Базовый арт.
+        myRow[6],           // C: Название из моего прайса
+        '', '', '',         // D-F: Размер+цвет, Штрихкод пост., Цена пост.
+        'Нет у поставщика', // G: Статус
         myRow[4],           // H: Старая цена
         myRow[4],           // I: Цена продажи
-        0,                  // J: Остаток = 0
-        myBarcode,          // K
-        myRow[1],           // L
-        myRow[0]            // M
+        0,                  // J: Остаток
+        myBarcode,          // K: Штрихкод мой
+        myRow[1],           // L: ID_варианта
+        myRow[0]            // M: ID_товара
       ]);
     }
   }
@@ -477,7 +479,8 @@ function создатьФайлДляИмпорта() {
     var priceStr = isNaN(price) ? '""' : (price + ',0');
     var costStr  = (cost === null || isNaN(cost)) ? '""' : (cost + ',0');
 
-    lines.push([variantId, r[2], r[0], priceStr, '""', '""', costStr, '""', stock].join('\t'));
+    var name = String(r[2]).replace(/"/g, "'");
+    lines.push([variantId, name, r[0], priceStr, '""', '""', costStr, '""', stock].join('\t'));
   }
 
   // Кодируем в UTF-16 LE (формат оригинального экспорта InSales)
