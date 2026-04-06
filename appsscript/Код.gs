@@ -564,3 +564,62 @@ function тестВыгрузки5строк() {
 
   SpreadsheetApp.getUi().alert(results.join('\n'));
 }
+
+// Загрузить Мой прайс из InSales API (все товары, постранично)
+function загрузитьМойПрайс() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var mySheet = ss.getSheetByName('Мой прайс');
+  var settSheet = ss.getSheetByName('Настройки');
+
+  if (mySheet.getLastRow() > 1) {
+    mySheet.getRange(2, 1, mySheet.getLastRow() - 1, 7).clearContent();
+  }
+
+  var rows = [];
+  var page = 1;
+  var PER_PAGE = 250;
+
+  while (true) {
+    settSheet.getRange('D1').setValue('Загрузка: стр. ' + page + '...');
+    SpreadsheetApp.flush();
+
+    var resp = apiGet('/admin/products.json?per_page=' + PER_PAGE + '&page=' + page);
+    if (resp.code !== 200) {
+      SpreadsheetApp.getUi().alert('Ошибка API на стр. ' + page + ': ' + resp.code);
+      return;
+    }
+
+    var products = JSON.parse(resp.body);
+    if (!products || products.length === 0) break;
+
+    for (var i = 0; i < products.length; i++) {
+      var p = products[i];
+      var productId = p.id;
+      var productName = String(p.title || '').replace(/"/g, "'");
+      var variants = p.variants || [];
+      for (var j = 0; j < variants.length; j++) {
+        var v = variants[j];
+        rows.push([
+          productId,
+          v.id,
+          v.sku || '',
+          v.barcode || '',
+          parseFloat(v.price) || 0,
+          v.quantity || 0,
+          productName
+        ]);
+      }
+    }
+
+    if (products.length < PER_PAGE) break;
+    page++;
+    Utilities.sleep(300);
+  }
+
+  if (rows.length > 0) {
+    mySheet.getRange(2, 1, rows.length, 7).setValues(rows);
+  }
+
+  settSheet.getRange('D1').setValue('Загрузка завершена: ' + rows.length + ' вариантов');
+  SpreadsheetApp.getUi().alert('Загружено ' + rows.length + ' вариантов.\nТеперь запусти "Обновить Сводную".');
+}
