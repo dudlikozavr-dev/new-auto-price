@@ -50,11 +50,14 @@ function обновитьПрайсПоставщика() {
   var data = sheet.getRange(8, 1, lastRow - 7, 18).getValues();
 
   var result = [];
+  var lastArticul = '';
   for (var i = 0; i < data.length; i++) {
     var row = data[i];
-    var articul = row[0];
+    var articul = String(row[0]).trim() || lastArticul;
     var cena = row[16];
-    if (!articul || !(parseFloat(String(cena).replace(',', '.')) > 0)) continue;
+    if (!(parseFloat(String(cena).replace(',', '.')) > 0)) continue;
+    if (!articul) continue;
+    lastArticul = articul;
     result.push([articul, row[3], row[13], row[14], cena, row[17]]);
   }
 
@@ -101,11 +104,14 @@ function шаг2_Импорт() {
   var data = sheet.getRange(8, 1, lastRow - 7, 18).getValues();
 
   var result = [];
+  var lastArticul = '';
   for (var i = 0; i < data.length; i++) {
     var row = data[i];
-    var articul = row[0];
+    var articul = String(row[0]).trim() || lastArticul;
     var cena = row[16];
-    if (!articul || !(parseFloat(String(cena).replace(',', '.')) > 0)) continue;
+    if (!(parseFloat(String(cena).replace(',', '.')) > 0)) continue;
+    if (!articul) continue;
+    lastArticul = articul;
     result.push([articul, row[3], row[13], row[14], cena, row[17]]);
   }
 
