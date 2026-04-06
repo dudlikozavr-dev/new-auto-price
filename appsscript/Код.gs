@@ -54,7 +54,7 @@ function обновитьПрайсПоставщика() {
     var row = data[i];
     var articul = row[0];
     var cena = row[16];
-    if (!articul || parseFloat(String(cena).replace(',', '.')) == 0) continue;
+    if (!articul || !(parseFloat(String(cena).replace(',', '.')) > 0)) continue;
     result.push([articul, row[3], row[13], row[14], cena, row[17]]);
   }
 
@@ -105,7 +105,7 @@ function шаг2_Импорт() {
     var row = data[i];
     var articul = row[0];
     var cena = row[16];
-    if (!articul || parseFloat(String(cena).replace(',', '.')) == 0) continue;
+    if (!articul || !(parseFloat(String(cena).replace(',', '.')) > 0)) continue;
     result.push([articul, row[3], row[13], row[14], cena, row[17]]);
   }
 
