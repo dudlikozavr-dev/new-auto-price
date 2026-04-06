@@ -256,6 +256,7 @@ function обновитьСводную() {
     var myRow = myData[j];
     var myArt = String(myRow[2]).trim();
     var myArtNorm = myArt.toLowerCase().trim();
+    if (myArtNorm.indexOf('ми') !== 0) continue;
     var myBase = myArtNorm.split(' ')[0];
     var myBarcode = String(myRow[3]).trim();
 
