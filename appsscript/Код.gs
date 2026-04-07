@@ -606,10 +606,12 @@ function загрузитьМойПрайс() {
       var variants = p.variants || [];
       for (var j = 0; j < variants.length; j++) {
         var v = variants[j];
+        var sku = String(v.sku || '').trim();
+        if (sku.toLowerCase().indexOf('ми') !== 0) continue;
         rows.push([
           productId,
           v.id,
-          v.sku || '',
+          sku,
           v.barcode || '',
           parseFloat(v.price) || 0,
           v.quantity || 0,
