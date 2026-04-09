@@ -573,40 +573,76 @@ function тестВыгрузки5строк() {
   SpreadsheetApp.getUi().alert(results.join('\n'));
 }
 
-// Загрузить Мой прайс из InSales API (все товары, постранично)
+// Загрузить Мой прайс из InSales API (через триггер, по 5 страниц за раз)
 function загрузитьМойПрайс() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var mySheet = ss.getSheetByName('Мой прайс');
-  var settSheet = ss.getSheetByName('Настройки');
+  var props = PropertiesService.getScriptProperties();
 
+  // Очищаем лист
+  var mySheet = ss.getSheetByName('Мой прайс');
   if (mySheet.getLastRow() > 1) {
     mySheet.getRange(2, 1, mySheet.getLastRow() - 1, 7).clearContent();
   }
 
-  var rows = [];
-  var page = 1;
-  var PER_PAGE = 250;
+  props.setProperty('loadSSId', ss.getId());
+  props.setProperty('loadPage', '1');
+  props.setProperty('loadTotal', '0');
 
-  while (true) {
-    settSheet.getRange('D1').setValue('Загрузка: стр. ' + page + '...');
+  ScriptApp.getProjectTriggers().forEach(function(t) {
+    if (t.getHandlerFunction() === 'загрузкаБатч') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('загрузкаБатч').timeBased().everyMinutes(1).create();
+
+  ss.getSheetByName('Настройки').getRange('D1').setValue('Загрузка запущена...');
+  SpreadsheetApp.getUi().alert('Загрузка запущена.\nПрогресс смотри в D1 листа Настройки.\nПо завершении появится алерт.');
+}
+
+function загрузкаБатч() {
+  var props = PropertiesService.getScriptProperties();
+  var ssId = props.getProperty('loadSSId');
+  if (!ssId) return;
+
+  var page = parseInt(props.getProperty('loadPage') || '1');
+  var total = parseInt(props.getProperty('loadTotal') || '0');
+  var PER_PAGE = 250;
+  var PAGES_PER_BATCH = 5;
+
+  var ss = SpreadsheetApp.openById(ssId);
+  var mySheet = ss.getSheetByName('Мой прайс');
+  var settSheet = ss.getSheetByName('Настройки');
+
+  for (var b = 0; b < PAGES_PER_BATCH; b++) {
+    settSheet.getRange('D1').setValue('Загрузка: стр. ' + page + ', вариантов: ' + total);
     SpreadsheetApp.flush();
 
     var resp;
     for (var attempt = 1; attempt <= 3; attempt++) {
       resp = apiGet('/admin/products.json?per_page=' + PER_PAGE + '&page=' + page);
       if (resp.code === 200) break;
-      settSheet.getRange('D1').setValue('Стр. ' + page + ': ошибка ' + resp.code + ', попытка ' + attempt + '/3...');
-      SpreadsheetApp.flush();
       Utilities.sleep(3000);
     }
     if (resp.code !== 200) {
-      SpreadsheetApp.getUi().alert('Ошибка API на стр. ' + page + ': ' + resp.code + '\nЗагружено вариантов: ' + rows.length);
+      settSheet.getRange('D1').setValue('Ошибка API стр. ' + page + ': ' + resp.code);
+      ScriptApp.getProjectTriggers().forEach(function(t) {
+        if (t.getHandlerFunction() === 'загрузкаБатч') ScriptApp.deleteTrigger(t);
+      });
+      props.deleteProperty('loadSSId');
       return;
     }
 
     var products = JSON.parse(resp.body);
-    if (!products || products.length === 0) break;
+    if (!products || products.length === 0) {
+      // Загрузка завершена
+      ScriptApp.getProjectTriggers().forEach(function(t) {
+        if (t.getHandlerFunction() === 'загрузкаБатч') ScriptApp.deleteTrigger(t);
+      });
+      props.deleteProperty('loadSSId');
+      settSheet.getRange('D1').setValue('Загрузка завершена: ' + total + ' вариантов');
+      SpreadsheetApp.getActiveSpreadsheet(); // не вызываем alert из триггера
+      return;
+    }
 
+    var rows = [];
     for (var i = 0; i < products.length; i++) {
       var p = products[i];
       var productId = p.id;
@@ -616,27 +652,29 @@ function загрузитьМойПрайс() {
         var v = variants[j];
         var sku = String(v.sku || '').trim();
         if (sku.toLowerCase().indexOf('ми') !== 0) continue;
-        rows.push([
-          productId,
-          v.id,
-          sku,
-          v.barcode || '',
-          parseFloat(v.price) || 0,
-          v.quantity || 0,
-          productName
-        ]);
+        rows.push([productId, v.id, sku, v.barcode || '', parseFloat(v.price) || 0, v.quantity || 0, productName]);
       }
     }
 
-    if (products.length < PER_PAGE) break;
+    if (rows.length > 0) {
+      mySheet.getRange(mySheet.getLastRow() + 1, 1, rows.length, 7).setValues(rows);
+      total += rows.length;
+    }
+
+    if (products.length < PER_PAGE) {
+      // Последняя страница
+      ScriptApp.getProjectTriggers().forEach(function(t) {
+        if (t.getHandlerFunction() === 'загрузкаБатч') ScriptApp.deleteTrigger(t);
+      });
+      props.deleteProperty('loadSSId');
+      settSheet.getRange('D1').setValue('Загрузка завершена: ' + total + ' вариантов');
+      return;
+    }
+
     page++;
     Utilities.sleep(300);
   }
 
-  if (rows.length > 0) {
-    mySheet.getRange(2, 1, rows.length, 7).setValues(rows);
-  }
-
-  settSheet.getRange('D1').setValue('Загрузка завершена: ' + rows.length + ' вариантов');
-  SpreadsheetApp.getUi().alert('Загружено ' + rows.length + ' вариантов.\nТеперь запусти "Обновить Сводную".');
+  props.setProperty('loadPage', String(page));
+  props.setProperty('loadTotal', String(total));
 }
