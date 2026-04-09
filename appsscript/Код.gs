@@ -483,11 +483,12 @@ function создатьФайлДляИмпорта() {
       stock = 0;
     }
 
-    var priceStr = isNaN(price) ? '""' : (price + ',0');
-    var costStr  = (cost === null || isNaN(cost)) ? '""' : (cost + ',0');
+    var priceStr    = isNaN(price) ? '""' : (price + ',0');
+    var oldPrice    = isNaN(price) ? '""' : (price * 2 + ',0');
+    var costStr     = (cost === null || isNaN(cost)) ? '""' : (cost + ',0');
 
     var name = String(r[2]).replace(/"/g, "'");
-    lines.push([variantId, name, r[0], priceStr, '""', '""', costStr, '""', stock].join('\t'));
+    lines.push([variantId, name, r[0], priceStr, oldPrice, '""', costStr, '""', stock].join('\t'));
   }
 
   // Кодируем в UTF-16 LE (формат оригинального экспорта InSales)
