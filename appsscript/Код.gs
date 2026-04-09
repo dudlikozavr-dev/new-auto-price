@@ -591,9 +591,16 @@ function загрузитьМойПрайс() {
     settSheet.getRange('D1').setValue('Загрузка: стр. ' + page + '...');
     SpreadsheetApp.flush();
 
-    var resp = apiGet('/admin/products.json?per_page=' + PER_PAGE + '&page=' + page);
+    var resp;
+    for (var attempt = 1; attempt <= 3; attempt++) {
+      resp = apiGet('/admin/products.json?per_page=' + PER_PAGE + '&page=' + page);
+      if (resp.code === 200) break;
+      settSheet.getRange('D1').setValue('Стр. ' + page + ': ошибка ' + resp.code + ', попытка ' + attempt + '/3...');
+      SpreadsheetApp.flush();
+      Utilities.sleep(3000);
+    }
     if (resp.code !== 200) {
-      SpreadsheetApp.getUi().alert('Ошибка API на стр. ' + page + ': ' + resp.code);
+      SpreadsheetApp.getUi().alert('Ошибка API на стр. ' + page + ': ' + resp.code + '\nЗагружено вариантов: ' + rows.length);
       return;
     }
 
