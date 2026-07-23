@@ -1,9 +1,40 @@
-var API_KEY = 'c044b7f6f791cb35307817cbc4cb5cd6';
-var API_PASS = '9b14cd1c4d5aadccffc30edf211d5203';
+var API_KEY = '0be53397a378bea9f795b3525c71831e';
+var API_PASS = '928b5f36f68936151c69c7ae6854ca5d';
 var DOMAIN = 'elenason.myinsales.ru';
 
 function getAuth() {
   return Utilities.base64Encode(API_KEY + ':' + API_PASS);
+}
+
+// Безопасный показ сообщения: окно из меню таблицы, иначе — запись в лог (не роняет выполнение)
+function уведомить(msg) {
+  try {
+    SpreadsheetApp.getUi().alert(msg);
+  } catch (e) {
+    Logger.log(msg);
+  }
+}
+
+// Меню в верхней панели таблицы (появляется при открытии файла)
+function onOpen() {
+  var ui = SpreadsheetApp.getUi();
+  ui.createMenu('🛒 Прайс')
+    .addItem('1. Обновить прайс поставщика (Platina) + сводную', 'обновитьПрайсПоставщика')
+    .addItem('2. Загрузить мой прайс из InSales', 'загрузитьМойПрайс')
+    .addItem('3. Обновить сводную', 'обновитьСводную')
+    .addSeparator()
+    .addItem('4. Создать файл для импорта (CSV)', 'создатьФайлДляИмпорта')
+    .addSeparator()
+    .addItem('Выгрузка в InSales по API (в фоне)', 'полнаяВыгрузка')
+    .addItem('Тест выгрузки 5 строк', 'тестВыгрузки5строк')
+    .addItem('Показать все товары Миа в InSales', 'показатьТоварыМиа')
+    .addSeparator()
+    .addSubMenu(ui.createMenu('Ручные шаги (резерв)')
+      .addItem('Поставщик: шаг 1 — конвертировать', 'шаг1_Конвертировать')
+      .addItem('Поставщик: шаг 2 — импорт', 'шаг2_Импорт')
+      .addItem('Мой прайс: шаг 1 — конвертировать', 'шаг1_КонвертироватьМойПрайс')
+      .addItem('Мой прайс: шаг 2 — импорт', 'шаг2_ИмпортМойПрайс'))
+    .addToUi();
 }
 
 function apiGet(path) {
@@ -32,7 +63,7 @@ function обновитьПрайсПоставщика() {
 
   var response = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
   if (response.getResponseCode() !== 200) {
-    SpreadsheetApp.getUi().alert('Ошибка загрузки файла: ' + response.getResponseCode());
+    уведомить('Ошибка загрузки файла: ' + response.getResponseCode());
     return;
   }
 
@@ -78,7 +109,7 @@ function обновитьПрайсПоставщика() {
 function шаг1_Конвертировать() {
   var files = DriveApp.getFilesByName('ostatki-Platina.xlsx');
   if (!files.hasNext()) {
-    SpreadsheetApp.getUi().alert('Файл не найден на Drive');
+    уведомить('Файл не найден на Drive');
     return;
   }
   var fileId = files.next().getId();
@@ -87,14 +118,14 @@ function шаг1_Конвертировать() {
     fileId
   );
   PropertiesService.getScriptProperties().setProperty('tempFileId', tempFile.id);
-  SpreadsheetApp.getUi().alert('Конвертация готова. Теперь запусти шаг2_Импорт');
+  уведомить('Конвертация готова. Теперь запусти шаг2_Импорт');
 }
 
 // ШАГ 2: Импорт прайса поставщика
 function шаг2_Импорт() {
   var tempId = PropertiesService.getScriptProperties().getProperty('tempFileId');
   if (!tempId) {
-    SpreadsheetApp.getUi().alert('Сначала запусти шаг1_Конвертировать');
+    уведомить('Сначала запусти шаг1_Конвертировать');
     return;
   }
 
@@ -125,14 +156,14 @@ function шаг2_Импорт() {
 
   Drive.Files.remove(tempId);
   PropertiesService.getScriptProperties().deleteProperty('tempFileId');
-  SpreadsheetApp.getUi().alert('Загружено строк: ' + result.length);
+  уведомить('Загружено строк: ' + result.length);
 }
 
 // ШАГ 1: Конвертировать mi_products CSV в Google Sheets на Drive
 function шаг1_КонвертироватьМойПрайс() {
   var files = DriveApp.searchFiles('title contains "mi_products" and trashed = false');
   if (!files.hasNext()) {
-    SpreadsheetApp.getUi().alert('Файл mi_products*.csv не найден на Drive.\nЗагрузи файл на Google Drive и повтори.');
+    уведомить('Файл mi_products*.csv не найден на Drive.\nЗагрузи файл на Google Drive и повтори.');
     return;
   }
   var file = files.next();
@@ -146,14 +177,14 @@ function шаг1_КонвертироватьМойПрайс() {
     file.getId()
   );
   PropertiesService.getScriptProperties().setProperty('tempMyStoreId', tempFile.id);
-  SpreadsheetApp.getUi().alert('Конвертация готова (' + file.getName() + ').\nТеперь запусти шаг2_ИмпортМойПрайс');
+  уведомить('Конвертация готова (' + file.getName() + ').\nТеперь запусти шаг2_ИмпортМойПрайс');
 }
 
 // ШАГ 2: Импорт моего прайса из сконвертированного файла
 function шаг2_ИмпортМойПрайс() {
   var tempId = PropertiesService.getScriptProperties().getProperty('tempMyStoreId');
   if (!tempId) {
-    SpreadsheetApp.getUi().alert('Сначала запусти шаг1_КонвертироватьМойПрайс');
+    уведомить('Сначала запусти шаг1_КонвертироватьМойПрайс');
     return;
   }
 
@@ -188,7 +219,27 @@ function шаг2_ИмпортМойПрайс() {
   if (result.length > 0) {
     destSheet.getRange(2, 1, result.length, 7).setValues(result);
   }
-  SpreadsheetApp.getUi().alert('Загружено строк: ' + result.length);
+  уведомить('Загружено строк: ' + result.length);
+}
+
+// Список ID вариантов в коллекции (для распродажи). Пусто при ошибке.
+function fetchCollectionVariantIds(collectionId) {
+  var ids = {};
+  var page = 1;
+  while (true) {
+    var resp = apiGet('/admin/products.json?collection_id=' + collectionId + '&per_page=250&page=' + page);
+    if (resp.code !== 200) break;
+    var prods = JSON.parse(resp.body);
+    if (!prods || prods.length === 0) break;
+    for (var i = 0; i < prods.length; i++) {
+      var vs = prods[i].variants || [];
+      for (var j = 0; j < vs.length; j++) ids[String(vs[j].id)] = true;
+    }
+    if (prods.length < 250) break;
+    page++;
+    Utilities.sleep(200);
+  }
+  return ids;
 }
 
 // Обновить Сводную и Новые товары
@@ -229,14 +280,32 @@ function обновитьСводную() {
     return Math.round(price * (1 + markup / 100));
   }
 
+  // --- Распродажа коллекции (Настройки: E3=ID коллекции, E4=скидка от зачёркнутой %, E5=дата до) ---
+  var saleVids = {};
+  var salePct = 0;
+  if (settSheet) {
+    var saleColId = String(settSheet.getRange('E3').getValue()).trim();
+    salePct = parseFloat(settSheet.getRange('E4').getValue()) || 0;
+    var saleUntil = settSheet.getRange('E5').getValue();
+    var saleOn = false;
+    if (saleColId && salePct > 0 && saleUntil) {
+      var until = (saleUntil instanceof Date) ? saleUntil : new Date(saleUntil);
+      if (until && !isNaN(until.getTime())) {
+        var endDay = new Date(until.getFullYear(), until.getMonth(), until.getDate(), 23, 59, 59);
+        if (new Date() <= endDay) saleOn = true;
+      }
+    }
+    if (saleOn) saleVids = fetchCollectionVariantIds(saleColId);
+  }
+
   // Поставщик: A=артикул, B=название, C=размер+цвет, D=штрихкод, E=цена, F=остаток
   var suppLastRow = suppSheet.getLastRow();
-  if (suppLastRow < 2) { SpreadsheetApp.getUi().alert('Лист Поставщик пуст'); return; }
+  if (suppLastRow < 2) { уведомить('Лист Поставщик пуст'); return; }
   var suppData = suppSheet.getRange(2, 1, suppLastRow - 1, 6).getValues();
 
   // Мой прайс: A=ID_товара, B=ID_варианта, C=артикул, D=штрихкод, E=цена_продажи, F=остаток, G=название
   var myLastRow = mySheet.getLastRow();
-  if (myLastRow < 2) { SpreadsheetApp.getUi().alert('Лист Мой прайс пуст'); return; }
+  if (myLastRow < 2) { уведомить('Лист Мой прайс пуст'); return; }
   var myData = mySheet.getRange(2, 1, myLastRow - 1, 7).getValues();
 
   // Строим карты поставщика: базовый артикул → массив индексов; штрихкод → индекс
@@ -318,6 +387,9 @@ function обновитьСводную() {
     if (matchIdx !== null) {
       suppMatched[matchIdx] = true;
       var sr = suppData[matchIdx];
+      var regular = calcPrice(sr[4], sr[1]);
+      var isSale = !!saleVids[String(myRow[1])];
+      var sellPrice = isSale ? Math.round(regular * 2 * (1 - salePct / 100)) : regular;
       svodRows.push([
         myArt,                        // A: Артикул мой
         myBase,                       // B: Базовый артикул
@@ -327,11 +399,13 @@ function обновитьСводную() {
         sr[4],                        // F: Цена поставщика
         'Совпал',                     // G: Статус
         myRow[4],                     // H: Старая цена
-        calcPrice(sr[4], sr[1]),      // I: Цена продажи = цена пост. × наценка
+        sellPrice,                    // I: Цена продажи (с учётом распродажи)
         sr[5],                        // J: Остаток поставщика
         myBarcode,                    // K: Штрихкод мой
         myRow[1],                     // L: ID_варианта
-        myRow[0]                      // M: ID_товара
+        myRow[0],                     // M: ID_товара
+        regular * 2,                  // N: Зачёркнутая цена
+        isSale                        // O: Распродажа
       ]);
     } else {
       svodRows.push([
@@ -345,25 +419,28 @@ function обновитьСводную() {
         0,                  // J: Остаток
         myBarcode,          // K: Штрихкод мой
         myRow[1],           // L: ID_варианта
-        myRow[0]            // M: ID_товара
+        myRow[0],           // M: ID_товара
+        (parseFloat(myRow[4]) || 0) * 2, // N: Зачёркнутая цена
+        false               // O: Распродажа
       ]);
     }
   }
 
   // Записываем Сводную
   svodSheet.clearContents();
-  svodSheet.getRange(1, 1, 1, 13).setValues([[
+  svodSheet.getRange(1, 1, 1, 15).setValues([[
     'Артикул', 'Базовый арт.', 'Название', 'Размер+цвет',
     'Штрихкод пост.', 'Цена пост.', 'Статус', 'Старая цена',
-    'Цена продажи', 'Остаток', 'Штрихкод мой', 'ID_варианта', 'ID_товара'
+    'Цена продажи', 'Остаток', 'Штрихкод мой', 'ID_варианта', 'ID_товара',
+    'Зачёркнутая', 'Распродажа'
   ]]);
   if (svodRows.length > 0) {
-    svodSheet.getRange(2, 1, svodRows.length, 13).setValues(svodRows);
+    svodSheet.getRange(2, 1, svodRows.length, 15).setValues(svodRows);
     var colors = svodRows.map(function(r) {
       var color = r[6] === 'Совпал' ? '#C6EFCE' : '#FFCCCC';
-      return new Array(13).fill(color);
+      return new Array(15).fill(color);
     });
-    svodSheet.getRange(2, 1, svodRows.length, 13).setBackgrounds(colors);
+    svodSheet.getRange(2, 1, svodRows.length, 15).setBackgrounds(colors);
   }
 
   // Записываем Новые товары
@@ -383,7 +460,7 @@ function обновитьСводную() {
 
   var совпало = svodRows.filter(function(r) { return r[6] === 'Совпал'; }).length;
   var нетУПост = svodRows.filter(function(r) { return r[6] === 'Нет у поставщика'; }).length;
-  SpreadsheetApp.getUi().alert(
+  уведомить(
     'Готово!\n' +
     'Совпало: ' + совпало + '\n' +
     'Нет у поставщика (остаток обнулён): ' + нетУПост + '\n' +
@@ -406,7 +483,7 @@ function полнаяВыгрузка() {
   ScriptApp.newTrigger('uploadBatch').timeBased().everyMinutes(1).create();
 
   ss.getSheetByName('Настройки').getRange('D1').setValue('Выгрузка запущена...');
-  SpreadsheetApp.getUi().alert('Выгрузка запущена.\nПрогресс смотри в ячейке D1 листа Настройки.\nМожно закрыть это окно — выгрузка идёт в фоне.');
+  уведомить('Выгрузка запущена.\nПрогресс смотри в ячейке D1 листа Настройки.\nМожно закрыть это окно — выгрузка идёт в фоне.');
 }
 
 function uploadBatch() {
@@ -447,6 +524,7 @@ function uploadBatch() {
     var payload = { price: r[8], quantity: r[9] };
     var cc = parseFloat(vd.cost_price), nc = parseFloat(r[5]);
     if (!isNaN(nc) && nc > 0 && cc !== nc) payload.cost_price = nc;
+    if (r[14] === true && parseFloat(r[13]) > 0) payload.old_price = Math.round(parseFloat(r[13])); // распродажа: ставим зачёркнутую
     var pr = apiPut('/admin/products/' + vd.product_id + '/variants/' + vid + '.json', { variant: payload });
     if (pr.code === 200) ok++; else err++;
     Utilities.sleep(150);
@@ -484,7 +562,8 @@ function создатьФайлДляИмпорта() {
     }
 
     var priceStr    = isNaN(price) ? '""' : (price + ',0');
-    var oldPrice    = isNaN(price) ? '""' : (price * 2 + ',0');
+    var struckVal   = parseFloat(r[13]); // N: зачёркнутая (учитывает распродажу)
+    var oldPrice    = isNaN(price) ? '""' : ((!isNaN(struckVal) && struckVal > 0 ? Math.round(struckVal) : price * 2) + ',0');
     var costStr     = (cost === null || isNaN(cost)) ? '""' : (cost + ',0');
 
     var name = String(r[2]).replace(/"/g, "'");
@@ -502,7 +581,7 @@ function создатьФайлДляИмпорта() {
   var fileName = 'insales_import_' + Utilities.formatDate(new Date(), 'Europe/Moscow', 'yyyyMMdd_HHmm') + '.csv';
   var file = DriveApp.createFile(Utilities.newBlob(bytes, 'text/csv', fileName));
 
-  SpreadsheetApp.getUi().alert(
+  уведомить(
     'Файл создан на Google Drive: ' + fileName + '\n\n' +
     'Найди его в Drive, скачай и загрузи в InSales:\n' +
     'Каталог → Импорт → Цены и остатки'
@@ -532,7 +611,9 @@ function тестВыгрузки5строк() {
       sku: r[0],          // A: Артикул
       price: r[8],        // I: Цена_продажи
       stock: r[9],        // J: Остаток
-      suppPrice: r[5]     // F: Цена поставщика (себестоимость)
+      suppPrice: r[5],    // F: Цена поставщика (себестоимость)
+      struck: r[13],      // N: Зачёркнутая
+      sale: r[14]         // O: Распродажа
     };
   });
 
@@ -559,6 +640,9 @@ function тестВыгрузки5строк() {
     if (!isNaN(newCost) && newCost > 0 && currentCost !== newCost) {
       payload.cost_price = newCost;
     }
+    if (item.sale === true && parseFloat(item.struck) > 0) {
+      payload.old_price = Math.round(parseFloat(item.struck));
+    }
 
     var putResp = apiPut(
       '/admin/products/' + productId + '/variants/' + item.variantId + '.json',
@@ -570,7 +654,7 @@ function тестВыгрузки5строк() {
     Utilities.sleep(300);
   }
 
-  SpreadsheetApp.getUi().alert(results.join('\n'));
+  уведомить(results.join('\n'));
 }
 
 // Загрузить Мой прайс из InSales API (через триггер, по 5 страниц за раз)
@@ -594,7 +678,7 @@ function загрузитьМойПрайс() {
   ScriptApp.newTrigger('загрузкаБатч').timeBased().everyMinutes(1).create();
 
   ss.getSheetByName('Настройки').getRange('D1').setValue('Загрузка запущена...');
-  SpreadsheetApp.getUi().alert('Загрузка запущена.\nПрогресс смотри в D1 листа Настройки.\nПо завершении появится алерт.');
+  уведомить('Загрузка запущена.\nПрогресс смотри в D1 листа Настройки.\nПо завершении появится алерт.');
 }
 
 function загрузкаБатч() {
@@ -677,4 +761,95 @@ function загрузкаБатч() {
 
   props.setProperty('loadPage', String(page));
   props.setProperty('loadTotal', String(total));
+}
+
+// Массово показать (снять скрытие) все товары Миа в InSales (через триггер, по 5 страниц за раз)
+function показатьТоварыМиа() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var props = PropertiesService.getScriptProperties();
+
+  props.setProperty('showSSId', ss.getId());
+  props.setProperty('showPage', '1');
+  props.setProperty('showTotal', '0');
+  props.setProperty('showDone', '0');
+
+  ScriptApp.getProjectTriggers().forEach(function(t) {
+    if (t.getHandlerFunction() === 'показатьБатч') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('показатьБатч').timeBased().everyMinutes(1).create();
+
+  ss.getSheetByName('Настройки').getRange('D1').setValue('Показ товаров запущен...');
+  уведомить('Запущено.\nПрогресс смотри в D1 листа Настройки.\nБудут показаны все скрытые товары с артикулом «ми».');
+}
+
+function показатьБатч() {
+  var props = PropertiesService.getScriptProperties();
+  var ssId = props.getProperty('showSSId');
+  if (!ssId) return;
+
+  var page = parseInt(props.getProperty('showPage') || '1');
+  var total = parseInt(props.getProperty('showTotal') || '0');
+  var done = parseInt(props.getProperty('showDone') || '0');
+  var PER_PAGE = 250;
+  var PAGES_PER_BATCH = 5;
+
+  var ss = SpreadsheetApp.openById(ssId);
+  var settSheet = ss.getSheetByName('Настройки');
+
+  function finish(msg) {
+    ScriptApp.getProjectTriggers().forEach(function(t) {
+      if (t.getHandlerFunction() === 'показатьБатч') ScriptApp.deleteTrigger(t);
+    });
+    props.deleteProperty('showSSId');
+    settSheet.getRange('D1').setValue(msg);
+  }
+
+  for (var b = 0; b < PAGES_PER_BATCH; b++) {
+    settSheet.getRange('D1').setValue('Показ: стр. ' + page + ', товаров Миа: ' + total + ', показано: ' + done);
+    SpreadsheetApp.flush();
+
+    var resp;
+    for (var attempt = 1; attempt <= 3; attempt++) {
+      resp = apiGet('/admin/products.json?per_page=' + PER_PAGE + '&page=' + page);
+      if (resp.code === 200) break;
+      Utilities.sleep(3000);
+    }
+    if (resp.code !== 200) {
+      finish('Ошибка API стр. ' + page + ': ' + resp.code + ' (показано ' + done + ')');
+      return;
+    }
+
+    var products = JSON.parse(resp.body);
+    if (!products || products.length === 0) {
+      finish('Показ завершён: показано ' + done + ' из ' + total + ' товаров Миа');
+      return;
+    }
+
+    for (var i = 0; i < products.length; i++) {
+      var p = products[i];
+      var variants = p.variants || [];
+      var isMia = false;
+      for (var j = 0; j < variants.length; j++) {
+        if (String(variants[j].sku || '').trim().toLowerCase().indexOf('ми') === 0) { isMia = true; break; }
+      }
+      if (!isMia) continue;
+      total++;
+      if (String(p.is_hidden).toLowerCase() === 'true') {
+        var pr = apiPut('/admin/products/' + p.id + '.json', { product: { is_hidden: false } });
+        if (pr.code === 200) done++;
+        Utilities.sleep(150);
+      }
+    }
+
+    if (products.length < PER_PAGE) {
+      finish('Показ завершён: показано ' + done + ' из ' + total + ' товаров Миа');
+      return;
+    }
+    page++;
+    Utilities.sleep(300);
+  }
+
+  props.setProperty('showPage', String(page));
+  props.setProperty('showTotal', String(total));
+  props.setProperty('showDone', String(done));
 }
