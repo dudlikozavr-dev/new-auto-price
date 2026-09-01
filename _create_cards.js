@@ -176,14 +176,16 @@ async function doFinish(){
 // characteristic_ids молча игнорируются, POST /admin/products/{id}/characteristics.json — 404.
 // Ставятся только импортом, колонками, и с включённой галкой «Добавлять/Удалять/Обновлять параметры».
 async function doProps(){
-  const header=['Название','Артикул','Бренд','Состав','Цвет','SKU_HIDDEN'];
+  // «Цена» обязательна: без неё импорт не стартует («Не указано поле с ценами продажи»).
+  // Значения те же, что уже стоят на сайте, поэтому перезапись ничего не меняет.
+  const header=['Название','Артикул','Цена','Бренд','Состав','Цвет','SKU_HIDDEN'];
   const lines=[header.join(';')]; const summary=[];
   for(const art of arts){
     const r=rows(art);
     if(!r){ console.log('ми'+art+': нет в прайсе — пропуск'); continue; }
     const d=donor.find(x=>x.article===String(art));
     const sostav=((d||{}).sostav||'').trim();
-    for(const x of r.rows) lines.push([x.title,x.sku,'Mia-Amore',sostav,x.color,x.base].join(';'));
+    for(const x of r.rows) lines.push([x.title,x.sku,x.price,'Mia-Amore',sostav,x.color,x.base].join(';'));
     summary.push({base:r.base,title:r.title,n:r.rows.length,sostav,colors:[...new Set(r.rows.map(x=>x.color))]});
   }
   fs.writeFileSync('import_props.csv', BOM+lines.join('\r\n')+'\r\n','utf8');
