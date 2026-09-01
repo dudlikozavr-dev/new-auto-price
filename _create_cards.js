@@ -12,14 +12,18 @@ const https=require('https'), fs=require('fs'), path=require('path'), crypto=req
 const AUTH='Basic '+Buffer.from('0be53397a378bea9f795b3525c71831e:928b5f36f68936151c69c7ae6854ca5d').toString('base64');
 const HOST='elenason.myinsales.ru';
 const PHOTOS='photos', BOM='\ufeff';
+const OPT_SIZE=84054; // \u043e\u043f\u0446\u0438\u044f \u00ab\u0420\u0430\u0437\u043c\u0435\u0440\u00bb \u0443 \u0432\u0430\u0440\u0438\u0430\u043d\u0442\u043e\u0432
 const MODE=process.argv.includes('--finish')?'finish':(process.argv.includes('--props')?'props':'csv');
 const arts=process.argv.slice(2).filter(a=>/^\d+$/.test(a));
 const sup=JSON.parse(fs.readFileSync('_supplier.json','utf8'));
 const donor=['_kok_out3.json','_kok_out4.json'].filter(f=>fs.existsSync(f))
   .reduce((a,f)=>a.concat(JSON.parse(fs.readFileSync(f,'utf8'))),[]);
+const OWN=fs.existsSync('_descriptions.json')?JSON.parse(fs.readFileSync('_descriptions.json','utf8')):{};
 const sleep=ms=>new Promise(x=>setTimeout(x,ms));
 const sizeMap={'XS':'XS(42)','S':'S(44)','M':'M(46)','L':'L(48)','XL':'XL(50)','2XL':'2XL(52)','3XL':'3XL(54)','4XL':'4XL(56)','5XL':'5XL(58)',
  'S/M':'S/M(44-46)','L/XL':'L/XL(48-50)','2XL/3XL':'2XL/3XL(52-54)','3XL/4XL':'3XL/4XL(54-56)','4XL/5XL':'4XL/5XL(56-58)','Free':'Free'};
+const SIZE_ORDER=['XS(42)','S(44)','M(46)','L(48)','XL(50)','2XL(52)','3XL(54)','4XL(56)','5XL(58)',
+ 'S/M(44-46)','L/XL(48-50)','2XL/3XL(52-54)','3XL/4XL(54-56)','4XL/5XL(56-58)','Free'];
 
 function req(method,p,body){return new Promise(res=>{
   const data=body?Buffer.from(JSON.stringify(body),'utf8'):null;
@@ -57,17 +61,19 @@ function rows(art){
     out.push({base, sku:base+' '+v.size.toLowerCase()+' '+v.color, title, color:v.color, size:sz,
       price, old:price*2, cost:v.price, stock:v.stock, barcode:String(v.barcode)});
   }
-  return {base, title, rows:out, skipped, sizes:[...new Set(out.map(r=>r.size))]};
+  // в прайсе размеры лежат по алфавиту (2XL, 3XL, L, M, S, XL) — для описания раскладываем по величине
+  const sizes=[...new Set(out.map(r=>r.size))].sort((a,b)=>SIZE_ORDER.indexOf(a)-SIZE_ORDER.indexOf(b));
+  return {base, title, rows:out, skipped, sizes};
 }
 
+// Текст берём ТОЛЬКО из _descriptions.json — своими словами.
+// Донорское описание в карточку не идёт: это дубликат чужого текста, поисковики его склеят,
+// и написан он под чужой магазин. Донор нужен как источник фактов при написании, не более.
 function buildDescription(art, sizes){
-  const d=donor.find(x=>x.article===String(art));
-  let raw=((d||{}).desc||'').trim();
-  // донор иногда отдаёт вместо описания товара общий текст про бренд — такой не берём
-  if(/Итальянская марка|Бренд miamia|по выгодной цене|интернет-магазин/i.test(raw)) raw='';
+  const raw=(OWN[String(art)]||'').trim();
   const sizeLine='Размеры: '+sizes.join(', ');
   const paras=raw?raw.split(/\n+/).map(x=>x.trim()).filter(Boolean).map(x=>'<p>'+esc(x)+'</p>'):[];
-  return {html:paras.join('\n')+(paras.length?'\n':'')+'<p>'+esc(sizeLine)+'</p>', fromDonor:!!raw};
+  return {html:paras.join('\n')+(paras.length?'\n':'')+'<p>'+esc(sizeLine)+'</p>', hasText:!!raw};
 }
 
 // Берём список из кэша донора, а не через glob по папке: после перезапусков _kok.js
@@ -148,7 +154,11 @@ async function doFinish(){
     const base='ми'+art, p=found[base];
     if(!p){ console.log(base+': карточки на сайте нет — сначала импортируй CSV'); continue; }
     const r=rows(art);
-    const desc=buildDescription(art, r.sizes);
+    // размеры берём с самой карточки: на сайте их может быть больше, чем в текущем прайсе
+    const onCard=[...new Set((p.variants||[])
+      .map(v=>((v.option_values||[]).find(o=>o.option_name_id===OPT_SIZE)||{}).title).filter(Boolean))]
+      .sort((a,b)=>SIZE_ORDER.indexOf(a)-SIZE_ORDER.indexOf(b));
+    const desc=buildDescription(art, onCard.length?onCard:r.sizes);
     const sib=sibling(base, sup[base].name, art, all);
     let colls=[], cat=null;
     if(sib){ const t=await reqR('GET','/admin/products/'+sib.pid+'.json'); if(t.code===200){ colls=t.json.collections_ids||[]; cat=t.json.category_id; } }
@@ -174,9 +184,9 @@ async function doFinish(){
       if(ir.code===201||ir.code===200) up++; else console.log('   фото '+f+': '+ir.code+' '+String(ir.body).slice(0,120));
       await sleep(500);
     }
-    console.log(base+' pid '+p.id+' | '+p.title+' | описание '+(ur.code===200?(desc.fromDonor?'с сайта-донора':'только размеры'):'ОШИБКА '+ur.code)
+    console.log(base+' pid '+p.id+' | '+p.title+' | описание '+(ur.code===200?(desc.hasText?'свой текст':'ТОЛЬКО РАЗМЕРЫ'):'ОШИБКА '+ur.code)
       +' | коллекций +'+added+(sib?' (по образцу «'+sib.title+'»)':'')+' | фото '+(have?'уже было '+have:up+'/'+pics.length));
-    report.push({base,pid:p.id,title:p.title,desc:desc.fromDonor,collections:added,photos:up});
+    report.push({base,pid:p.id,title:p.title,desc:desc.hasText,collections:added,photos:up});
     await sleep(600);
   }
   fs.writeFileSync('_create_cards_report.json', JSON.stringify(report,null,1),'utf8');
