@@ -43,7 +43,12 @@ const COLORS=['графит','молочный','кремовый','оранже
     const seg=(u.match(/\/(\d+)\/?$/)||[])[1]||'';
     const art=(/^\d{4}$/.test(seg)?seg:null)||(title.match(/\b(\d{4})\b/)||[])[1]||'????';
     const color=COLORS.find(c=>title.toLowerCase().includes(c))||'?';
-    const descRaw=(html.match(/<meta itemprop="description" content="([\s\S]*?)"\s*\/?>/i)||html.match(/<meta name="description" content="([\s\S]*?)"\s*\/?>/i)||[])[1]||'';
+    // miamia: в мета-теге бывает чужой товар или общая реклама бренда, настоящее описание лежит
+    // в теле страницы между «Модель Артикул» и словом «Состав» — оттуда и берём в первую очередь
+    const bodyText=html.replace(/<script[\s\S]*?<\/script>/gi,' ').replace(/<style[\s\S]*?<\/style>/gi,' ')
+      .replace(/<[^>]+>/g,' ').replace(/&nbsp;/g,' ').replace(/\s+/g,' ');
+    const fromBody=(bodyText.match(new RegExp('\\b'+art+'\\s+([А-ЯЁ][^]{40,900}?)\\s*Состав','i'))||[])[1]||'';
+    const descRaw=fromBody||(html.match(/<meta itemprop="description" content="([\s\S]*?)"\s*\/?>/i)||html.match(/<meta name="description" content="([\s\S]*?)"\s*\/?>/i)||[])[1]||'';
     const desc=descRaw.replace(/&#(\d+);/g,(_,c)=>String.fromCharCode(+c)).replace(/&nbsp;/g,' ').replace(/&quot;/g,'"').replace(/&amp;/g,'&')
       .split(/\n\s*\n\s*Коллекци[яю]/)[0].replace(/^Только у нас\s*/,'').trim();
     const text=html.replace(/<script[\s\S]*?<\/script>/gi,' ').replace(/<style[\s\S]*?<\/style>/gi,' ').replace(/<[^>]+>/g,' ')

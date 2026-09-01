@@ -13,7 +13,9 @@ const AUTH='Basic '+Buffer.from('0be53397a378bea9f795b3525c71831e:928b5f36f68936
 const HOST='elenason.myinsales.ru';
 const PHOTOS='photos', BOM='\ufeff';
 const OPT_SIZE=84054; // \u043e\u043f\u0446\u0438\u044f \u00ab\u0420\u0430\u0437\u043c\u0435\u0440\u00bb \u0443 \u0432\u0430\u0440\u0438\u0430\u043d\u0442\u043e\u0432
-const MODE=process.argv.includes('--finish')?'finish':(process.argv.includes('--props')?'props':'csv');
+const MODE=process.argv.includes('--finish')?'finish':(process.argv.includes('--props')?'props'
+  :(process.argv.includes('--fixsku')?'fixsku':'csv'));
+const APPLY=process.argv.includes('--apply');
 const arts=process.argv.slice(2).filter(a=>/^\d+$/.test(a));
 const sup=JSON.parse(fs.readFileSync('_supplier.json','utf8'));
 const donor=['_kok_out3.json','_kok_out4.json'].filter(f=>fs.existsSync(f))
@@ -69,8 +71,10 @@ function rows(art){
 // Текст берём ТОЛЬКО из _descriptions.json — своими словами.
 // Донорское описание в карточку не идёт: это дубликат чужого текста, поисковики его склеят,
 // и написан он под чужой магазин. Донор нужен как источник фактов при написании, не более.
+// значение в _descriptions.json — либо строка с текстом, либо {title, text}
+const own=art=>{const v=OWN[String(art)]; return typeof v==='string'?{text:v}:(v||{});};
 function buildDescription(art, sizes){
-  const raw=(OWN[String(art)]||'').trim();
+  const raw=(own(art).text||'').trim();
   const sizeLine='Размеры: '+sizes.join(', ');
   const paras=raw?raw.split(/\n+/).map(x=>x.trim()).filter(Boolean).map(x=>'<p>'+esc(x)+'</p>'):[];
   return {html:paras.join('\n')+(paras.length?'\n':'')+'<p>'+esc(sizeLine)+'</p>', hasText:!!raw};
@@ -165,6 +169,11 @@ async function doFinish(){
 
     const upd={description:desc.html};
     if(cat && p.category_id!==cat) upd.category_id=cat;
+    // название из прайса Platina часто расходится с изделием (халат/туника, сорочка/платье) —
+    // в _descriptions.json лежит выверенное по сайту производителя
+    const wantTitle=(own(art).title||'').trim();
+    const renamed=wantTitle && wantTitle!==p.title;
+    if(renamed) upd.title=wantTitle;
     const ur=await reqR('PUT','/admin/products/'+p.id+'.json',{product:upd});
 
     let added=0;
@@ -184,9 +193,10 @@ async function doFinish(){
       if(ir.code===201||ir.code===200) up++; else console.log('   фото '+f+': '+ir.code+' '+String(ir.body).slice(0,120));
       await sleep(500);
     }
-    console.log(base+' pid '+p.id+' | '+p.title+' | описание '+(ur.code===200?(desc.hasText?'свой текст':'ТОЛЬКО РАЗМЕРЫ'):'ОШИБКА '+ur.code)
+    console.log(base+' pid '+p.id+' | '+(renamed?('«'+p.title+'» -> «'+wantTitle+'»'):p.title)
+      +' | описание '+(ur.code===200?(desc.hasText?'свой текст':'ТОЛЬКО РАЗМЕРЫ'):'ОШИБКА '+ur.code)
       +' | коллекций +'+added+(sib?' (по образцу «'+sib.title+'»)':'')+' | фото '+(have?'уже было '+have:up+'/'+pics.length));
-    report.push({base,pid:p.id,title:p.title,desc:desc.hasText,collections:added,photos:up});
+    report.push({base,pid:p.id,title:wantTitle||p.title,renamedFrom:renamed?p.title:null,desc:desc.hasText,collections:added,photos:up});
     await sleep(600);
   }
   fs.writeFileSync('_create_cards_report.json', JSON.stringify(report,null,1),'utf8');
@@ -213,4 +223,60 @@ async function doProps(){
   for(const s of summary) console.log('  '+s.base+' | состав: '+(s.sostav||'НЕТ — заполни руками')+' | цвет: '+s.colors.join('/'));
 }
 
-(MODE==='finish'?doFinish():MODE==='props'?doProps():doCsv()).catch(e=>{console.error(e);process.exit(1);});
+// Импорт пишет в sku варианта колонку «Артикул», поэтому у пачки карточек все варианты
+// получили один и тот же артикул. Пересобираем sku из фактических опций: <база> <размер> <цвет>.
+// Без --apply только показывает, что собирается менять.
+async function doFixSku(){
+  const short=s=>String(s).replace(/\(.*\)$/,'').trim().toLowerCase();
+  process.stderr.write('скан каталога: ');
+  const cards=[];
+  for(let page=1;page<=120;page++){
+    const r=await reqR('GET','/admin/products.json?per_page=250&page='+page);
+    if(!Array.isArray(r.json)||!r.json.length) break;
+    for(const p of r.json){
+      const vs=(p.variants||[]).filter(v=>/^ми\d+/i.test(String(v.sku||'').trim()));
+      if(vs.length>1) cards.push({id:p.id,title:p.title,variants:vs});
+    }
+    process.stderr.write(page+' ');
+    await sleep(250);
+  }
+  process.stderr.write('\n');
+
+  let touched=0, skipped=0, changed=0;
+  for(const c of cards){
+    const seen={}; c.variants.forEach(v=>{const k=String(v.sku).trim(); (seen[k]=seen[k]||[]).push(v)});
+    if(!Object.values(seen).some(a=>a.length>1)) continue;   // дублей нет — не трогаем
+    const plan=[];
+    for(const v of c.variants){
+      const cur=String(v.sku).trim();
+      const base=cur.split(/\s+/)[0];
+      const size=((v.option_values||[]).find(o=>o.option_name_id===OPT_SIZE)||{}).title||'';
+      const color=((v.option_values||[]).find(o=>o.option_name_id===84275)||{}).title||'';
+      if(!size||!color){ plan.length=0; break; }
+      plan.push({v, cur, want:(base+' '+short(size)+' '+color).replace(/\s+/g,' ')});
+    }
+    if(!plan.length || new Set(plan.map(x=>x.want)).size!==plan.length){
+      console.log('ПРОПУСК '+c.id+' | '+c.title.slice(0,60)+' — опции не дают уникальных артикулов');
+      skipped++; continue;
+    }
+    const diff=plan.filter(x=>x.cur!==x.want);
+    if(!diff.length) continue;
+    touched++;
+    console.log((APPLY?'':'[показ] ')+c.id+' | '+c.title.slice(0,60)+' — '+diff.length+' вар.');
+    for(const x of diff){
+      if(!APPLY){ console.log('    "'+x.cur+'" -> "'+x.want+'"'); continue; }
+      const r=await reqR('PUT','/admin/products/'+c.id+'/variants/'+x.v.id+'.json',{variant:{sku:x.want}});
+      const chk=(await reqR('GET','/admin/products/'+c.id+'/variants/'+x.v.id+'.json')).json;
+      const ok=chk&&String(chk.sku).trim()===x.want;
+      console.log('    "'+x.cur+'" -> "'+x.want+'" '+(ok?'OK':'НЕ ПРИМЕНИЛОСЬ ('+r.code+')'));
+      if(ok) changed++;
+      await sleep(350);
+    }
+    await sleep(300);
+  }
+  console.log('\nкарточек с дублями: '+(touched+skipped)+' | обработано: '+touched+' | пропущено: '+skipped
+    +(APPLY?' | переименовано вариантов: '+changed:' | это был показ, для записи добавь --apply'));
+}
+
+(MODE==='finish'?doFinish():MODE==='props'?doProps():MODE==='fixsku'?doFixSku():doCsv())
+  .catch(e=>{console.error(e);process.exit(1);});
