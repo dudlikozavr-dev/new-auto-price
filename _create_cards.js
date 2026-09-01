@@ -95,12 +95,15 @@ function sibling(base, name, art, cards){
 }
 
 async function doCsv(){
-  const header=['Артикул','Артикул варианта','Название','Цвет','Размер','Цена','Старая цена','Себестоимость','Остаток','Штрихкод'];
+  // «Артикул варианта» импорт игнорирует — в sku варианта он пишет колонку «Артикул»,
+  // поэтому артикул варианта кладём именно туда, иначе все строки одного товара
+  // выглядят одним и тем же вариантом и импорт заводит только первую
+  const header=['Название','Артикул','Цвет','Размер','Цена','Старая цена','Себестоимость','Остаток','Штрихкод'];
   const lines=[header.join(';')]; const summary=[];
   for(const art of arts){
     const r=rows(art);
     if(!r){ console.log('ми'+art+': нет в прайсе — пропуск'); continue; }
-    for(const x of r.rows) lines.push([x.base,x.sku,x.title,x.color,x.size,x.price,x.old,x.cost,x.stock,x.barcode].join(';'));
+    for(const x of r.rows) lines.push([x.title,x.sku,x.color,x.size,x.price,x.old,x.cost,x.stock,x.barcode].join(';'));
     summary.push(r);
   }
   fs.writeFileSync('import_new_cards.csv', BOM+lines.join('\r\n')+'\r\n','utf8');
