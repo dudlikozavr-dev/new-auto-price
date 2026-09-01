@@ -15,7 +15,8 @@ const PHOTOS='photos', BOM='\ufeff';
 const MODE=process.argv.includes('--finish')?'finish':(process.argv.includes('--props')?'props':'csv');
 const arts=process.argv.slice(2).filter(a=>/^\d+$/.test(a));
 const sup=JSON.parse(fs.readFileSync('_supplier.json','utf8'));
-const donor=JSON.parse(fs.readFileSync('_kok_out3.json','utf8'));
+const donor=['_kok_out3.json','_kok_out4.json'].filter(f=>fs.existsSync(f))
+  .reduce((a,f)=>a.concat(JSON.parse(fs.readFileSync(f,'utf8'))),[]);
 const sleep=ms=>new Promise(x=>setTimeout(x,ms));
 const sizeMap={'XS':'XS(42)','S':'S(44)','M':'M(46)','L':'L(48)','XL':'XL(50)','2XL':'2XL(52)','3XL':'3XL(54)','4XL':'4XL(56)','5XL':'5XL(58)',
  'S/M':'S/M(44-46)','L/XL':'L/XL(48-50)','2XL/3XL':'2XL/3XL(52-54)','3XL/4XL':'3XL/4XL(54-56)','4XL/5XL':'4XL/5XL(56-58)','Free':'Free'};

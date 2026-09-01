@@ -32,6 +32,7 @@ const COLORS=['графит','молочный','кремовый','оранже
 
 (async()=>{
   const summary=[];
+  const used=new Set(); // один артикул может идти двумя ссылками (вторая расцветка) — не затираем первую
   for(const raw of urls){
     const u=raw.split('?')[0];
     const site=siteOf(new URL(u).host);
@@ -68,7 +69,8 @@ const COLORS=['графит','молочный','кремовый','оранже
     for(const {buf,ext} of best.values()){
       const h=crypto.createHash('md5').update(buf).digest('hex');
       if(hashes.has(h)) continue; hashes.add(h);
-      n++; const fn=site.key+'_'+art+'_'+n+'.'+ext;
+      let fn; do{ n++; fn=site.key+'_'+art+'_'+n+'.'+ext; }while(used.has(fn));
+      used.add(fn);
       fs.writeFileSync(path.join(outDir,fn), buf);
       saved.push({fn, bytes:buf.length});
     }
