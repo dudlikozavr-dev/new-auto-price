@@ -252,8 +252,8 @@ async function doFixSku(){
       const base=cur.split(/\s+/)[0];
       const size=((v.option_values||[]).find(o=>o.option_name_id===OPT_SIZE)||{}).title||'';
       const color=((v.option_values||[]).find(o=>o.option_name_id===84275)||{}).title||'';
-      if(!size||!color){ plan.length=0; break; }
-      plan.push({v, cur, want:(base+' '+short(size)+' '+color).replace(/\s+/g,' ')});
+      if(!size){ plan.length=0; break; }   // без размера собрать артикул не из чего
+      plan.push({v, cur, want:(base+' '+short(size)+(color?' '+color:'')).replace(/\s+/g,' ')});
     }
     if(!plan.length || new Set(plan.map(x=>x.want)).size!==plan.length){
       console.log('ПРОПУСК '+c.id+' | '+c.title.slice(0,60)+' — опции не дают уникальных артикулов');
