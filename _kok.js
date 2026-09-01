@@ -48,7 +48,9 @@ const COLORS=['графит','молочный','кремовый','оранже
       .split(/\n\s*\n\s*Коллекци[яю]/)[0].replace(/^Только у нас\s*/,'').trim();
     const text=html.replace(/<script[\s\S]*?<\/script>/gi,' ').replace(/<style[\s\S]*?<\/style>/gi,' ').replace(/<[^>]+>/g,' ')
       .replace(/&nbsp;/g,' ').replace(/&#(\d+);/g,(_,c)=>String.fromCharCode(+c)).replace(/\s+/g,' ');
-    const sostav=((text.match(/Состав[:\s]*([^]{0,70}?)\s*(?:Размер|Уход|Артикул|$)/i)||[])[1]||'').trim();
+    // miamia: «Состав 100% полиэстер Размеры ...»; kokete: «Состав: 100 % вискоза — материал, который ...»
+    const sostav=((text.match(/Состав[:\s]*([^]{0,70}?)\s*(?:[—–.]|Размер|Уход|Артикул|$)/i)||[])[1]||'')
+      .replace(/\s+%/,'%').trim();
     const cands=new Set();
     for(const m of html.matchAll(/(?:src|data-src|data-large|href|content)=["']([^"']*\.(?:png|jpe?g|webp))["']/gi)) cands.add(m[1]);
     for(const m of html.matchAll(/\/(?:upload\/iblock|images\/detailed)\/[^"'\s<>)]+?\.(?:png|jpe?g|webp)/gi)) cands.add(m[0]);

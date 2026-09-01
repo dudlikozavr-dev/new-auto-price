@@ -8,7 +8,7 @@
 //
 //   node _create_cards.js --csv <арт> [<арт> ...]      -> import_new_cards.csv
 //   node _create_cards.js --finish <арт> [<арт> ...]   -> фото + описание + коллекции на уже созданные
-const https=require('https'), fs=require('fs'), path=require('path');
+const https=require('https'), fs=require('fs'), path=require('path'), crypto=require('crypto');
 const AUTH='Basic '+Buffer.from('0be53397a378bea9f795b3525c71831e:928b5f36f68936151c69c7ae6854ca5d').toString('base64');
 const HOST='elenason.myinsales.ru';
 const PHOTOS='photos', BOM='\ufeff';
@@ -70,10 +70,20 @@ function buildDescription(art, sizes){
   return {html:paras.join('\n')+(paras.length?'\n':'')+'<p>'+esc(sizeLine)+'</p>', fromDonor:!!raw};
 }
 
+// Берём список из кэша донора, а не через glob по папке: после перезапусков _kok.js
+// в photos/ остаются файлы прошлых заходов с теми же артикулами, и они побайтно дублируют текущие.
+// Один артикул может идти двумя ссылками (вторая расцветка) — собираем файлы из всех записей.
 function photosFor(art){
   if(!fs.existsSync(PHOTOS)) return [];
-  return fs.readdirSync(PHOTOS).filter(f=>new RegExp('_'+art+'_\\d+\\.(png|jpe?g|webp)$','i').test(f))
-    .sort((a,b)=>(+((a.match(/_(\d+)\./)||[])[1]||0))-(+((b.match(/_(\d+)\./)||[])[1]||0)));
+  const listed=donor.filter(x=>x.article===String(art)).flatMap(x=>x.files||[]);
+  const files=listed.length?listed.filter(f=>fs.existsSync(path.join(PHOTOS,f)))
+    :fs.readdirSync(PHOTOS).filter(f=>new RegExp('_'+art+'_\\d+\\.(png|jpe?g|webp)$','i').test(f))
+      .sort((a,b)=>(+((a.match(/_(\d+)\./)||[])[1]||0))-(+((b.match(/_(\d+)\./)||[])[1]||0)));
+  const seen=new Set();
+  return files.filter(f=>{
+    const h=crypto.createHash('md5').update(fs.readFileSync(path.join(PHOTOS,f))).digest('hex');
+    if(seen.has(h)) return false; seen.add(h); return true;
+  });
 }
 
 // карточка того же типа/линейки, у которой копируем категорию и коллекции
