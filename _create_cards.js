@@ -12,7 +12,7 @@ const https=require('https'), fs=require('fs'), path=require('path');
 const AUTH='Basic '+Buffer.from('0be53397a378bea9f795b3525c71831e:928b5f36f68936151c69c7ae6854ca5d').toString('base64');
 const HOST='elenason.myinsales.ru';
 const PHOTOS='photos', BOM='\ufeff';
-const MODE=process.argv.includes('--finish')?'finish':'csv';
+const MODE=process.argv.includes('--finish')?'finish':(process.argv.includes('--props')?'props':'csv');
 const arts=process.argv.slice(2).filter(a=>/^\d+$/.test(a));
 const sup=JSON.parse(fs.readFileSync('_supplier.json','utf8'));
 const donor=JSON.parse(fs.readFileSync('_kok_out3.json','utf8'));
@@ -171,4 +171,23 @@ async function doFinish(){
   fs.writeFileSync('_create_cards_report.json', JSON.stringify(report,null,1),'utf8');
 }
 
-(MODE==='finish'?doFinish():doCsv()).catch(e=>{console.error(e);process.exit(1);});
+// Характеристики (свойства) API не отдаёт: characteristics_attributes / characteristics /
+// characteristic_ids молча игнорируются, POST /admin/products/{id}/characteristics.json — 404.
+// Ставятся только импортом, колонками, и с включённой галкой «Добавлять/Удалять/Обновлять параметры».
+async function doProps(){
+  const header=['Название','Артикул','Бренд','Состав','Цвет','SKU_HIDDEN'];
+  const lines=[header.join(';')]; const summary=[];
+  for(const art of arts){
+    const r=rows(art);
+    if(!r){ console.log('ми'+art+': нет в прайсе — пропуск'); continue; }
+    const d=donor.find(x=>x.article===String(art));
+    const sostav=((d||{}).sostav||'').trim();
+    for(const x of r.rows) lines.push([x.title,x.sku,'Mia-Amore',sostav,x.color,x.base].join(';'));
+    summary.push({base:r.base,title:r.title,n:r.rows.length,sostav,colors:[...new Set(r.rows.map(x=>x.color))]});
+  }
+  fs.writeFileSync('import_props.csv', BOM+lines.join('\r\n')+'\r\n','utf8');
+  console.log('import_props.csv — строк:', lines.length-1);
+  for(const s of summary) console.log('  '+s.base+' | состав: '+(s.sostav||'НЕТ — заполни руками')+' | цвет: '+s.colors.join('/'));
+}
+
+(MODE==='finish'?doFinish():MODE==='props'?doProps():doCsv()).catch(e=>{console.error(e);process.exit(1);});

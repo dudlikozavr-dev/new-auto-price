@@ -45,6 +45,9 @@ const COLORS=['графит','молочный','кремовый','оранже
     const descRaw=(html.match(/<meta itemprop="description" content="([\s\S]*?)"\s*\/?>/i)||html.match(/<meta name="description" content="([\s\S]*?)"\s*\/?>/i)||[])[1]||'';
     const desc=descRaw.replace(/&#(\d+);/g,(_,c)=>String.fromCharCode(+c)).replace(/&nbsp;/g,' ').replace(/&quot;/g,'"').replace(/&amp;/g,'&')
       .split(/\n\s*\n\s*Коллекци[яю]/)[0].replace(/^Только у нас\s*/,'').trim();
+    const text=html.replace(/<script[\s\S]*?<\/script>/gi,' ').replace(/<style[\s\S]*?<\/style>/gi,' ').replace(/<[^>]+>/g,' ')
+      .replace(/&nbsp;/g,' ').replace(/&#(\d+);/g,(_,c)=>String.fromCharCode(+c)).replace(/\s+/g,' ');
+    const sostav=((text.match(/Состав[:\s]*([^]{0,70}?)\s*(?:Размер|Уход|Артикул|$)/i)||[])[1]||'').trim();
     const cands=new Set();
     for(const m of html.matchAll(/(?:src|data-src|data-large|href|content)=["']([^"']*\.(?:png|jpe?g|webp))["']/gi)) cands.add(m[1]);
     for(const m of html.matchAll(/\/(?:upload\/iblock|images\/detailed)\/[^"'\s<>)]+?\.(?:png|jpe?g|webp)/gi)) cands.add(m[0]);
@@ -69,7 +72,7 @@ const COLORS=['графит','молочный','кремовый','оранже
       fs.writeFileSync(path.join(outDir,fn), buf);
       saved.push({fn, bytes:buf.length});
     }
-    summary.push({url:u, site:site.key, article:art, color, title:title.replace(/ купить.*$/,''), desc, photos:saved.length, files:saved.map(s=>s.fn)});
+    summary.push({url:u, site:site.key, article:art, color, title:title.replace(/ купить.*$/,''), desc, sostav, photos:saved.length, files:saved.map(s=>s.fn)});
     process.stderr.write(site.key+':'+art+'('+saved.length+') ');
     await sleep(400);
   }
